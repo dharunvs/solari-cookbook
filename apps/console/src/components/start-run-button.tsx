@@ -1,0 +1,58 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
+
+import type { Run } from "@/components/run-status";
+
+export function StartRunButton({
+  productId,
+  runPath,
+}: {
+  productId: string;
+  runPath: string;
+}) {
+  const router = useRouter();
+  const key = useRef(crypto.randomUUID());
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function start() {
+    setPending(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId, idempotencyKey: key.current }),
+      });
+      const data = (await response.json()) as Run & { error?: string };
+      if (!response.ok || !data.id)
+        throw new Error(data.error ?? "Could not start the run.");
+      router.push(`${runPath}/${data.id}`);
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Could not start the run.",
+      );
+      setPending(false);
+    }
+  }
+
+  return (
+    <div>
+      <button
+        className="rounded-md bg-ink px-4 py-2.5 text-sm font-medium text-white disabled:cursor-wait disabled:opacity-60"
+        disabled={pending}
+        onClick={start}
+        type="button"
+      >
+        {pending ? "Starting…" : "Start verification"}
+      </button>
+      {error ? (
+        <p className="mt-3 text-sm text-error-deep" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
