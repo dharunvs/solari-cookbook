@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "noxyn-contract-fixture/1.0",
+  "fixtureVersion": "2.0.0",
+  "capabilities": [
+    {
+      "id": "sandbox.create.memory_mb",
+      "wireName": "memMb",
+      "required": false,
+      "type": "integer",
+      "bindings": {
+        "python": "mem_mb",
+        "typescript": "memMb",
+        "go": "MemMb"
+      }
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "noxyn-static-analysis-result/1.0",
+  "scenario": "sandbox-create-evolution",
+  "fixture": true,
+  "summary": {
+    "capabilities": 1,
+    "aligned": 4,
+    "suspected": 2,
+    "notExpected": 0,
+    "unverified": 0
+  },
+  "cells": [
+    {"capabilityId": "sandbox.create.memory_mb", "surface": "contract", "state": "ALIGNED"},
+    {"capabilityId": "sandbox.create.memory_mb", "surface": "python", "state": "SUSPECTED"},
+    {"capabilityId": "sandbox.create.memory_mb", "surface": "typescript", "state": "ALIGNED"},
+    {"capabilityId": "sandbox.create.memory_mb", "surface": "go", "state": "ALIGNED"},
+    {"capabilityId": "sandbox.create.memory_mb", "surface": "docs_python", "state": "SUSPECTED"},
+    {"capabilityId": "sandbox.create.memory_mb", "surface": "docs_typescript", "state": "ALIGNED"}
+  ]
+}

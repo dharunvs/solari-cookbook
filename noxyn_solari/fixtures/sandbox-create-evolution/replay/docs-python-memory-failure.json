@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "noxyn-execution-replay/1.0",
+  "fixture": true,
+  "language": "python",
+  "sourceSurface": "docs_python",
+  "phase": "VERIFY",
+  "package": {"name": "solari-sandbox", "version": "0.2.0"},
+  "sourceSha256": "cf6de89fa93053e3967c1a64fccf21b75017723f63a602dc4612a03484c8e066",
+  "infrastructure": {"state": "PASS", "step": "execute"},
+  "subject": {
+    "state": "FAIL",
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "TypeError: SandboxClient.create() got an unexpected keyword argument 'memory'\n"
+  },
+  "durationMs": 861,
+  "cleanupState": "PASS"
+}

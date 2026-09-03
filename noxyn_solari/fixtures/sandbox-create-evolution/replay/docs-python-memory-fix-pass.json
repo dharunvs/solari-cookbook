@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "noxyn-execution-replay/1.0",
+  "fixture": true,
+  "language": "python",
+  "sourceSurface": "docs_python",
+  "phase": "FIX_VERIFY",
+  "package": {"name": "solari-sandbox", "version": "0.2.0"},
+  "sourceSha256": "7e25e1cb6eb87397b2af5db5ea9205a08ee9082f3435901f5ef7f5500fee9249",
+  "infrastructure": {"state": "PASS", "step": "execute"},
+  "subject": {"state": "PASS", "exitCode": 0, "stdout": "Documentation proposal passed.\n", "stderr": ""},
+  "durationMs": 917,
+  "cleanupState": "PASS"
+}

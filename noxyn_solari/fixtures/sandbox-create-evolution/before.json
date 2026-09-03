@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "noxyn-contract-fixture/1.0",
+  "fixtureVersion": "1.0.0",
+  "capabilities": [
+    {
+      "id": "sandbox.create.memory_mb",
+      "wireName": "memory",
+      "required": false,
+      "type": "integer"
+    }
+  ]
+}

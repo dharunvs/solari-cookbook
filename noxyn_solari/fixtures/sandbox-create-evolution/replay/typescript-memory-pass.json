@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "noxyn-execution-replay/1.0",
+  "fixture": true,
+  "language": "typescript",
+  "package": {
+    "name": "@solarisdk/sandbox",
+    "version": "0.1.2"
+  },
+  "sourceSha256": "c44f01192490598f36ecc593b38d53d7194afc74288f0017850dbba5823d1e88",
+  "infrastructure": {
+    "state": "PASS",
+    "step": "execute"
+  },
+  "subject": {
+    "state": "PASS",
+    "exitCode": 0,
+    "stdout": "TypeScript Sandbox.create({ memMb }) succeeded.\n",
+    "stderr": ""
+  },
+  "durationMs": 934,
+  "cleanupState": "PASS"
+}

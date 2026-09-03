@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "noxyn-solari-manifest/1.0",
+  "scenario": "sandbox-create-evolution",
+  "fixture": true,
+  "project": "solari",
+  "product": "sandbox",
+  "contracts": {
+    "before": "noxyn_solari/fixtures/sandbox-create-evolution/before.json",
+    "after": "noxyn_solari/fixtures/sandbox-create-evolution/after.json"
+  },
+  "packages": {
+    "python": {"name": "solari-sandbox", "version": "0.2.0", "import": "solari_sandbox"},
+    "typescript": {"name": "@solarisdk/sandbox", "version": "0.1.2", "import": "@solarisdk/sandbox"},
+    "typescriptExample": {"name": "@solarisdk/sdk", "version": "0.1.2", "import": "@solarisdk/sdk"},
+    "go": {"name": "github.com/solari-sdk/solari-sandbox-go", "version": "v0.1.2", "import": "solari"}
+  },
+  "sources": [
+    {"surface": "python", "kind": "python", "path": "noxyn_solari/fixtures/sandbox-create-evolution/runtime-python/main.py"},
+    {"surface": "typescript", "kind": "typescript", "path": "noxyn_solari/fixtures/sandbox-create-evolution/runtime-typescript/main.mjs"},
+    {"surface": "go", "kind": "go", "path": "noxyn_solari/fixtures/sandbox-create-evolution/go-example/main.go"},
+    {"surface": "docs_python", "kind": "markdown_python", "path": "noxyn_solari/fixtures/sandbox-create-evolution/stale-python-example/README.md"},
+    {"surface": "docs_typescript", "kind": "markdown_typescript", "path": "noxyn_solari/fixtures/sandbox-create-evolution/stale-typescript-example/README.md"}
+  ],
+  "execution": {
+    "python": {
+      "sourceSurface": "python",
+      "replay": "noxyn_solari/fixtures/sandbox-create-evolution/replay/python-memory-failure.json",
+      "timeoutSeconds": 45,
+      "maxOutputBytes": 16384
+    },
+    "typescript": {
+      "sourceSurface": "typescript",
+      "replay": "noxyn_solari/fixtures/sandbox-create-evolution/replay/typescript-memory-pass.json",
+      "timeoutSeconds": 45,
+      "maxOutputBytes": 16384
+    }
+  }
+}
