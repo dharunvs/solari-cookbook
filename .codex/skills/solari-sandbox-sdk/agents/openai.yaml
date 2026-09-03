@@ -1,0 +1,4 @@
+interface:
+  display_name: "Solari Sandbox SDK"
+  short_description: "Implement and verify Solari Sandbox SDK usage"
+  default_prompt: "Use $solari-sandbox-sdk to implement or review this Solari Sandbox integration."
