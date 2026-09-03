@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: noxyn_solari
+      POSTGRES_PASSWORD: noxyn-local-only
+      POSTGRES_USER: noxyn
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U noxyn -d noxyn_solari"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "55432:5432"
+    volumes:
+      - noxyn-solari-postgres:/var/lib/postgresql/data
+
+volumes:
+  noxyn-solari-postgres:

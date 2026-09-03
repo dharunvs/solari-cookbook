@@ -1,0 +1,13 @@
+[project]
+name = "noxyn-verification-worker"
+version = "0.1.0"
+description = "Noxyn-Solari PostgreSQL-backed verification worker"
+requires-python = ">=3.12,<3.15"
+dependencies = ["psycopg[binary]==3.3.5", "solari-sandbox==0.2.0"]
+
+[project.scripts]
+noxyn-verification-worker = "noxyn_verification_worker.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.11.19,<0.12.0"]
+build-backend = "uv_build"

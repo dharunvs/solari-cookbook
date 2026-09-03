@@ -1,0 +1,22 @@
+[project]
+name = "noxyn-api"
+version = "0.1.0"
+description = "Noxyn-Solari product API"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "alembic==1.19.1",
+    "fastapi==0.141.1",
+    "pydantic==2.13.5",
+    "python-dotenv==1.2.2",
+    "psycopg[binary]==3.3.5",
+    "sqlalchemy==2.0.52",
+    "uvicorn[standard]==0.52.4",
+    "clerk-backend-api==7.0.0",
+]
+
+[project.scripts]
+noxyn-api = "noxyn_api.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.11.19,<0.12.0"]
+build-backend = "uv_build"

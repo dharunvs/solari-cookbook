@@ -1,0 +1,41 @@
+[project]
+name = "noxyn-solari-workspace"
+version = "0.1.0"
+description = "Noxyn-Solari Python workspace"
+requires-python = ">=3.12,<3.15"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "httpx==0.28.1",
+    "mypy==1.18.2",
+    "pytest==8.4.2",
+    "ruff==0.14.5",
+]
+
+[tool.uv]
+package = false
+required-version = "==0.11.19"
+
+[tool.uv.workspace]
+members = ["services/api", "workers/verification"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["services/api/tests", "workers/verification/tests"]
+markers = [
+    "integration: requires the local PostgreSQL service",
+    "live: requires SOLARI_API_KEY and creates a billed Solari Sandbox",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true

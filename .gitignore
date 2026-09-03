@@ -1,8 +1,54 @@
+# Dependencies and package-manager state
 node_modules/
+.pnpm-store/
 package-lock.json
-.env
-__pycache__/
-*.pyc
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# JavaScript / Next.js build output and test artifacts
+.next/
+dist/
+out/
+.turbo/
+coverage/
+*.tsbuildinfo
+playwright-report/
+test-results/
+blob-report/
+
+# Python environments, packaging, and test caches
 .venv/
 venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+htmlcov/
+.coverage
+.coverage.*
+
+# Local runtime state and generated verification artifacts
+.artifacts/
+.noxyn/
+*.sqlite3
+
+# Secrets and machine-local configuration. Keep the documented template.
+.env
+.env.*
+!.env.example
+.mcp.json
+notes.md
+HANDOFF.md
+
+# Editor, OS, and one-off local capture files
+.DS_Store
+.idea/
+.vscode/
 screenshot.png
