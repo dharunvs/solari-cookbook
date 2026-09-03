@@ -89,3 +89,94 @@ New examples are welcome. Keep them small, make them run end-to-end against the
 real API, and put anything surprising in a comment right where it bites.
 
 MIT licensed.
+
+## Noxyn-Solari application development
+
+This repository also contains the Noxyn-Solari MVP application foundation.
+Noxyn analyzes Solari's Sandbox API ecosystem and uses fresh Solari Sandboxes
+as its execution and verification layer.
+
+Requirements:
+
+- Node.js 22 with Corepack
+- pnpm 9.15.0
+- Python 3.12 and uv 0.11.19
+- Docker with Compose
+
+Start the local foundation:
+
+```bash
+nvm use
+corepack enable
+cp .env.example .env
+pnpm install --frozen-lockfile
+uv sync --all-packages --frozen
+pnpm db:up
+pnpm db:migrate
+pnpm dev
+```
+
+For Clerk, create `apps/console/.env.local` from
+`apps/console/.env.example` and add the two keys from your Clerk dashboard.
+Do not place Clerk keys in the repository-root `.env.local`; the console file
+is the one local source of truth. In development, the API reads that console
+file after any root file so it verifies the same Clerk instance. Neither key is
+sent to the browser except the intentionally public `NEXT_PUBLIC_` key.
+
+The console runs at `http://localhost:3000`, and the API health endpoint is
+`http://127.0.0.1:8000/health`. Keep `localhost` as the browser origin during a
+session; `localhost` and `127.0.0.1` have separate Clerk cookies. The worker
+writes a durable heartbeat to PostgreSQL and processes leased readiness jobs.
+
+After onboarding, open **Sandbox runs** and start a verification. The default
+`NOXYN_EXECUTOR_MODE=replay` deterministically reproduces the controlled Python
+fixture in local development and CI. Replay evidence is prominently labelled
+and cryptographically bound to the exact package version and source hash; it is
+never presented as a live Solari execution. Local artifact bodies are written
+below `.artifacts/noxyn` and are ignored by Git.
+
+To execute the same bounded harness inside a fresh Solari Sandbox, set these
+worker-only variables and restart the worker:
+
+```bash
+NOXYN_EXECUTOR_MODE=live
+SOLARI_API_KEY=slr_live_...
+SOLARI_API_BASE_URL=https://api.getsolari.com
+```
+
+The API key is passed to the sandbox command environment only. It is never
+written to the fixture, browser bundle, logs, database, or artifacts. Live
+execution is timeout-bound, output-limited and redacted, and the verification
+sandbox is killed in a `finally` path.
+
+The paid live integration test has an additional deliberate gate:
+
+```bash
+NOXYN_RUN_LIVE_TESTS=true uv run --all-packages pytest -m live
+```
+
+For the real authentication lifecycle, configure Clerk in the console
+environment (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`). The API
+uses Clerk's official backend SDK with the same secret; no additional JWT
+variables are required. The local browser journey is deterministic and
+explicitly test-only:
+
+```bash
+pnpm test:e2e
+```
+
+It enables `NOXYN_E2E_AUTH_BYPASS` only for the spawned local processes; the
+bypass cannot activate when `APP_ENV=production`.
+
+Run the same validation used by CI:
+
+```bash
+pnpm verify
+```
+
+Regenerate the FastAPI OpenAPI document and TypeScript client after changing
+an API route or schema:
+
+```bash
+pnpm openapi:generate
+```
