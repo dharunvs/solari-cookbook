@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql://noxyn:noxyn-ci-only@127.0.0.1:5432/noxyn_solari
+      NOXYN_API_BASE_URL: http://127.0.0.1:8000
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_DB: noxyn_solari
+          POSTGRES_PASSWORD: noxyn-ci-only
+          POSTGRES_USER: noxyn
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U noxyn -d noxyn_solari"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.19"
+          enable-cache: true
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Python dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Apply database migrations
+        run: pnpm db:migrate
+
+      - name: Verify worker database heartbeat
+        run: pnpm worker:once
+
+      - name: Verify repository
+        run: pnpm verify
+
+      - name: Run authenticated onboarding journey
+        run: |
+          pnpm --filter @noxyn/console exec playwright install --with-deps chromium
+          pnpm test:e2e
+
+      - name: Smoke-test API readiness
+        run: |
+          uv run --package noxyn-api uvicorn noxyn_api.main:app --host 127.0.0.1 --port 8000 &
+          api_pid=$!
+          trap 'kill "$api_pid"' EXIT
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if curl --fail --silent http://127.0.0.1:8000/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
