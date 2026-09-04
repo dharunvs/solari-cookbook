@@ -1,9 +1,12 @@
 import asyncio
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import psycopg
+import pytest
 from fastapi.testclient import TestClient
+from noxyn_api import runs
 from noxyn_api.main import create_app
 from noxyn_verification_worker.artifacts import LocalArtifactStore
 from noxyn_verification_worker.config import DEFAULT_DATABASE_URL
@@ -45,6 +48,151 @@ def _configured_product(client: TestClient, subject: str) -> str:
         },
     )
     return str(product["id"])
+
+
+class _MatrixMappings:
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self.rows = rows
+
+    def all(self) -> list[dict[str, Any]]:
+        return self.rows
+
+    def one_or_none(self) -> dict[str, Any] | None:
+        return self.rows[0] if self.rows else None
+
+
+class _MatrixResult:
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self.rows = rows
+
+    def mappings(self) -> _MatrixMappings:
+        return _MatrixMappings(self.rows)
+
+
+class _ParityMatrixSession:
+    def __init__(self, execution_rows: list[dict[str, Any]]) -> None:
+        self.results = [
+            _MatrixResult(
+                [
+                    {
+                        "object_key": "matrix.json",
+                        "sha256": "a" * 64,
+                        "byte_length": 1,
+                    }
+                ]
+            ),
+            _MatrixResult(execution_rows),
+        ]
+
+    async def execute(self, *_: Any) -> _MatrixResult:
+        return self.results.pop(0)
+
+
+def _runtime_row(
+    language: str, infrastructure_state: str, subject_state: str
+) -> dict[str, Any]:
+    return {
+        "id": uuid4(),
+        "language": language,
+        "source_surface": language,
+        "backend": "REPLAY",
+        "infrastructure_state": infrastructure_state,
+        "subject_state": subject_state,
+    }
+
+
+def _matrix_evidence_body() -> bytes:
+    return (
+        runs.MatrixView(
+            schema_version="noxyn-static-analysis-result/1.0",
+            scenario="sandbox-create-evolution",
+            fixture=True,
+            parser_version="test",
+            manifest_sha256="a" * 64,
+            contract_diff=runs.ContractDiffView(
+                capability_id="sandbox.create.memory_mb",
+                before="memory",
+                after="memMb",
+                classification="RENAMED",
+            ),
+            packages={},
+            summary=runs.MatrixSummaryView(
+                capabilities=1,
+                aligned=0,
+                suspected=1,
+                not_expected=0,
+                unverified=0,
+            ),
+            rows=[
+                runs.MatrixRowView(
+                    capability_id="sandbox.create.memory_mb",
+                    label="Memory limit",
+                    cells=[],
+                    runtime=runs.RuntimeCellView(
+                        state="NOT_RUN",
+                        summary="The Python subject has not run.",
+                    ),
+                )
+            ],
+        )
+        .model_dump_json()
+        .encode()
+    )
+
+
+@pytest.mark.parametrize(
+    ("go_row", "expected_compared_languages", "expected_go_state"),
+    [
+        (_runtime_row("go", "PASS", "PASS"), ["python", "typescript", "go"], "PASS"),
+        (None, ["python", "typescript"], "NOT_RUN"),
+        (_runtime_row("go", "FAIL", "NOT_RUN"), ["python", "typescript"], "UNVERIFIED"),
+    ],
+    ids=["all-runtime-evidence", "missing-go-evidence", "go-infrastructure-failure"],
+)
+def test_runtime_parity_requires_verified_go_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    go_row: dict[str, Any] | None,
+    expected_compared_languages: list[str],
+    expected_go_state: str,
+) -> None:
+    class Reader:
+        def read(self, _: Any) -> bytes:
+            return _matrix_evidence_body()
+
+    async def run_in_workspace(*_: Any) -> None:
+        return None
+
+    monkeypatch.setattr(runs, "_artifact_reader", lambda: Reader())
+    monkeypatch.setattr(runs, "_run_in_workspace", run_in_workspace)
+    execution_rows = [
+        _runtime_row("python", "PASS", "FAIL"),
+        _runtime_row("typescript", "PASS", "PASS"),
+    ]
+    if go_row is not None:
+        execution_rows.append(go_row)
+
+    matrix = asyncio.run(
+        runs._matrix_for_run(
+            _ParityMatrixSession(execution_rows),  # type: ignore[arg-type]
+            uuid4(),
+            uuid4(),
+        )
+    )
+
+    go_runtime = next(
+        cell for cell in matrix.rows[0].runtime_cells if cell.language == "go"
+    )
+    assert go_runtime.state == expected_go_state
+    assert matrix.parity is not None
+    assert matrix.parity.compared_languages == expected_compared_languages
+    if go_row is None or go_row["infrastructure_state"] == "FAIL":
+        assert matrix.parity.state == "INCOMPLETE"
+    else:
+        assert matrix.parity.state == "DIFFERENT"
+        assert matrix.parity.summary == (
+            "Python reproduces the stale parameter while TypeScript and Go pass "
+            "with memMb and MemMb."
+        )
 
 
 def test_run_is_idempotent_pollable_and_cancellable(monkeypatch: object) -> None:
@@ -188,19 +336,31 @@ def test_completed_run_exposes_runtime_matrix_findings_and_execution(
             "python",
             "docs_python",
             "typescript",
+            "go",
         ]
         assert [cell["state"] for cell in runtime_cells] == [
             "FAIL",
             "FAIL",
             "PASS",
+            "PASS",
         ]
+        go_runtime = next(
+            cell for cell in runtime_cells if cell["sourceSurface"] == "go"
+        )
+        assert go_runtime["state"] == "PASS"
+        assert go_runtime["summary"] == "The controlled Go example subject passed."
+        assert go_runtime["language"] == "go"
+        assert go_runtime["infrastructureState"] == "PASS"
+        assert go_runtime["subjectState"] == "PASS"
+        assert go_runtime["backend"] == "REPLAY"
+        assert go_runtime["executionId"]
         assert matrix.json()["parity"] == {
             "state": "DIFFERENT",
             "summary": (
-                "Python reproduces the stale parameter while TypeScript "
-                "passes with memMb."
+                "Python reproduces the stale parameter while TypeScript and Go "
+                "pass with memMb and MemMb."
             ),
-            "comparedLanguages": ["python", "typescript"],
+            "comparedLanguages": ["python", "typescript", "go"],
         }
 
         findings = client.get(
@@ -224,7 +384,7 @@ def test_completed_run_exposes_runtime_matrix_findings_and_execution(
         executions = client.get(
             f"/v1/runs/{run['id']}/executions", headers=_headers(owner)
         ).json()["items"]
-        assert len(executions) == 3
+        assert len(executions) == 4
         execution = next(
             item for item in executions if item["source_surface"] == "python"
         )
@@ -243,6 +403,13 @@ def test_completed_run_exposes_runtime_matrix_findings_and_execution(
         assert typescript["subject_state"] == "PASS"
         assert typescript["exit_code"] == 0
         assert typescript["package_name"] == "@solarisdk/sandbox"
+        go = next(item for item in executions if item["source_surface"] == "go")
+        assert go["finding_id"] is None
+        assert go["language"] == "go"
+        assert go["infrastructure_state"] == "PASS"
+        assert go["subject_state"] == "PASS"
+        assert go["exit_code"] == 0
+        assert go["package_name"] == "github.com/solari-sdk/solari-sandbox-go"
         execution_detail = client.get(
             f"/v1/executions/{execution['id']}", headers=_headers(owner)
         )

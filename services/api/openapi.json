@@ -361,7 +361,8 @@
           "language": {
             "enum": [
               "python",
-              "typescript"
+              "typescript",
+              "go"
             ],
             "title": "Language",
             "type": "string"
@@ -985,7 +986,8 @@
             "items": {
               "enum": [
                 "python",
-                "typescript"
+                "typescript",
+                "go"
               ],
               "type": "string"
             },
@@ -1458,7 +1460,8 @@
             "default": "python",
             "enum": [
               "python",
-              "typescript"
+              "typescript",
+              "go"
             ],
             "title": "Language",
             "type": "string"

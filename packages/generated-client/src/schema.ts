@@ -495,7 +495,7 @@ export interface components {
        * Language
        * @enum {string}
        */
-      language: "python" | "typescript";
+      language: "python" | "typescript" | "go";
       /** Output Truncated */
       output_truncated: boolean;
       /** Package Name */
@@ -751,7 +751,7 @@ export interface components {
     /** ParityView */
     ParityView: {
       /** Comparedlanguages */
-      comparedLanguages: ("python" | "typescript")[];
+      comparedLanguages: ("python" | "typescript" | "go")[];
       /**
        * State
        * @enum {string}
@@ -954,7 +954,7 @@ export interface components {
        * @default python
        * @enum {string}
        */
-      language: "python" | "typescript";
+      language: "python" | "typescript" | "go";
       /**
        * Sourcesurface
        * @default python

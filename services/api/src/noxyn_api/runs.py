@@ -110,7 +110,7 @@ class MatrixCellView(AnalysisModel):
 class RuntimeCellView(AnalysisModel):
     state: Literal["NOT_RUN", "PASS", "FAIL", "UNVERIFIED"]
     summary: str
-    language: Literal["python", "typescript"] = "python"
+    language: Literal["python", "typescript", "go"] = "python"
     source_surface: str = "python"
     infrastructure_state: Literal["PASS", "FAIL"] | None = None
     subject_state: Literal["PASS", "FAIL", "NOT_RUN"] | None = None
@@ -129,7 +129,7 @@ class MatrixRowView(AnalysisModel):
 class ParityView(AnalysisModel):
     state: Literal["MATCH", "DIFFERENT", "INCOMPLETE"]
     summary: str
-    compared_languages: list[Literal["python", "typescript"]]
+    compared_languages: list[Literal["python", "typescript", "go"]]
 
 
 class MatrixSummaryView(AnalysisModel):
@@ -205,7 +205,7 @@ class ExecutionView(BaseModel):
     finding_id: UUID | None
     proposal_id: UUID | None
     attempt_number: int
-    language: Literal["python", "typescript"]
+    language: Literal["python", "typescript", "go"]
     source_surface: str
     phase: Literal["VERIFY", "FIX_VERIFY"]
     backend: Literal["REPLAY", "SOLARI"]
@@ -539,7 +539,7 @@ async def _matrix_for_run(
                    infrastructure_state, subject_state
             FROM execution_attempts
             WHERE run_id = :run_id AND workspace_id = :workspace_id
-              AND source_surface IN ('python', 'docs_python', 'typescript')
+              AND source_surface IN ('python', 'docs_python', 'typescript', 'go')
               AND phase = 'VERIFY'
             ORDER BY source_surface, attempt_number DESC
             """
@@ -552,12 +552,13 @@ async def _matrix_for_run(
         ("python", "python", "Python example"),
         ("docs_python", "python", "Python documentation"),
         ("typescript", "typescript", "TypeScript example"),
+        ("go", "go", "Go example"),
     ):
         runtime = runtime_rows.get(source_surface)
         if runtime is None:
             runtime_cells.append(
                 RuntimeCellView(
-                    language=cast(Literal["python", "typescript"], language),
+                    language=cast(Literal["python", "typescript", "go"], language),
                     source_surface=source_surface,
                     state="NOT_RUN",
                     summary=f"The {label} subject has not run.",
@@ -579,7 +580,7 @@ async def _matrix_for_run(
         )
         runtime_cells.append(
             RuntimeCellView(
-                language=cast(Literal["python", "typescript"], language),
+                language=cast(Literal["python", "typescript", "go"], language),
                 source_surface=source_surface,
                 state=runtime_state,
                 summary=summary,
@@ -592,27 +593,35 @@ async def _matrix_for_run(
     comparable = [
         cell
         for cell in runtime_cells
-        if cell.source_surface in {"python", "typescript"}
+        if cell.source_surface in {"python", "typescript", "go"}
         and cell.infrastructure_state == "PASS"
         and cell.subject_state in {"PASS", "FAIL"}
     ]
-    if len(comparable) < 2:
+    if len(comparable) < 3:
         parity = ParityView(
             state="INCOMPLETE",
-            summary="Both language subjects need verified infrastructure results before comparison.",
+            summary=(
+                "Python, TypeScript, and Go subjects need verified infrastructure "
+                "results before comparison."
+            ),
             compared_languages=[cell.language for cell in comparable],
         )
-    elif comparable[0].subject_state == comparable[1].subject_state:
+    elif len({cell.subject_state for cell in comparable}) == 1:
         parity = ParityView(
             state="MATCH",
-            summary=f"Python and TypeScript both report {comparable[0].subject_state}.",
-            compared_languages=["python", "typescript"],
+            summary=(
+                f"Python, TypeScript, and Go all report {comparable[0].subject_state}."
+            ),
+            compared_languages=["python", "typescript", "go"],
         )
     else:
         parity = ParityView(
             state="DIFFERENT",
-            summary="Python reproduces the stale parameter while TypeScript passes with memMb.",
-            compared_languages=["python", "typescript"],
+            summary=(
+                "Python reproduces the stale parameter while TypeScript and Go "
+                "pass with memMb and MemMb."
+            ),
+            compared_languages=["python", "typescript", "go"],
         )
     legacy_runtime = next(
         (cell for cell in runtime_cells if cell.source_surface == "python"),
