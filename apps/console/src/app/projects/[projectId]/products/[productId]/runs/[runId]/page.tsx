@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { RunDetail } from "@/components/run-detail";
@@ -56,25 +55,13 @@ export default async function RunPage({
     };
   }
   return (
-    <main className="min-h-screen bg-canvas-soft text-ink" id="main-content">
-      <header className="border-b border-hairline bg-canvas">
-        <div className="mx-auto flex min-h-16 max-w-5xl items-center px-4 py-3 sm:px-6">
-          <Link
-            className="text-sm font-medium"
-            href={`/projects/${projectId}/products/${productId}/runs`}
-          >
-            ← Run history
-          </Link>
-        </div>
-      </header>
-      <section className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-12">
-        <RunDetail
-          initialAnalysis={initialAnalysis}
-          initialRun={run}
-          productId={productId}
-          projectId={projectId}
-        />
-      </section>
-    </main>
+    <section className="py-10 sm:py-12">
+      <RunDetail
+        initialAnalysis={initialAnalysis}
+        initialRun={run}
+        productId={productId}
+        projectId={projectId}
+      />
+    </section>
   );
 }
