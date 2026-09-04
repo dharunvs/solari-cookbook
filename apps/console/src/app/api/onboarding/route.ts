@@ -32,6 +32,22 @@ export async function POST(request: Request) {
     sources?: unknown;
   };
   const api = apiFor(identity);
+  if (body.action === "save-project-draft") {
+    const { data, response } = await api.PATCH("/v1/onboarding", {
+      body: {
+        current_step: "project",
+        project_name: String(body.projectName ?? ""),
+        project_slug: String(body.projectSlug ?? ""),
+      },
+      headers: { "Idempotency-Key": idempotency() },
+    });
+    if (!data)
+      return NextResponse.json(
+        { error: await apiError(response) },
+        { status: response.status },
+      );
+    return NextResponse.json({ saved: true });
+  }
   if (body.action === "create-project") {
     const { data, response } = await api.POST("/v1/projects", {
       body: {
@@ -45,7 +61,7 @@ export async function POST(request: Request) {
         { error: await apiError(response) },
         { status: response.status },
       );
-    return NextResponse.json({ nextPath: "/onboarding" });
+    return NextResponse.json({ nextPath: "/onboarding?step=product" });
   }
   const me = await api.GET("/v1/me");
   if (!me.data)
@@ -67,7 +83,7 @@ export async function POST(request: Request) {
         { error: await apiError(response) },
         { status: response.status },
       );
-    return NextResponse.json({ nextPath: "/onboarding" });
+    return NextResponse.json({ nextPath: "/onboarding?step=configuration" });
   }
   if (body.action === "save-configuration" && me.data.onboarding.product_id) {
     const sources = Array.isArray(body.sources)

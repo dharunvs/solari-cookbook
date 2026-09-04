@@ -18,12 +18,26 @@ test("registration, resume, and Sandbox configuration journey", async ({
   await expect(
     page.getByRole("heading", { name: "Start with Solari." }),
   ).toBeVisible();
+  await expect(page).toHaveURL(/\/onboarding\?step=project$/);
 
-  await page.getByLabel("Project name").fill("Solari");
+  await page.getByLabel("Project name").fill("Resumable Solari");
+  await page.getByLabel("Project slug").fill("resumable-solari");
+  await page.waitForTimeout(500);
+  await page.reload();
+  await expect(page.getByLabel("Project name")).toHaveValue("Resumable Solari");
+  await expect(page.getByLabel("Project slug")).toHaveValue("resumable-solari");
+
+  await page.goto("/onboarding?step=configuration");
+  await expect(page).toHaveURL(/\/onboarding\?step=project$/);
+  await expect(
+    page.getByRole("heading", { name: "Start with Solari." }),
+  ).toBeVisible();
+
   await page.getByRole("button", { name: "Create project" }).click();
   await expect(
     page.getByRole("heading", { name: "Choose what to verify first." }),
   ).toBeVisible();
+  await expect(page).toHaveURL(/\/onboarding\?step=product$/);
 
   // A refresh retains the server-side onboarding draft and the authenticated workspace.
   await page.reload();
@@ -34,10 +48,29 @@ test("registration, resume, and Sandbox configuration journey", async ({
     page.getByRole("button", { name: "Coming later" }).first(),
   ).toBeDisabled();
 
-  await page.getByRole("button", { name: "Add Sandbox" }).click();
+  await page.goto("/onboarding?step=configuration");
+  await expect(page).toHaveURL(/\/onboarding\?step=product$/);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page.getByRole("button", { name: "Coming later" }).first(),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Add Sandbox" }).focus();
+  await page.keyboard.press("Enter");
   await expect(
     page.getByRole("heading", { name: "Configure Sandbox verification." }),
   ).toBeVisible();
+  await expect(page).toHaveURL(/\/onboarding\?step=configuration$/);
+
+  await page.goBack();
+  await expect(
+    page.getByRole("heading", { name: "Configure Sandbox verification." }),
+  ).toBeVisible();
+  await page.goForward();
+  await expect(
+    page.getByRole("heading", { name: "Configure Sandbox verification." }),
+  ).toBeVisible();
+
   await page.getByRole("button", { name: "Save configuration v1" }).click();
   await expect(
     page.getByRole("heading", { name: "Solari is ready for verification." }),
@@ -231,9 +264,7 @@ test("registration, resume, and Sandbox configuration journey", async ({
   });
 
   await page.getByRole("link", { name: "Run history" }).click();
-  await page
-    .getByLabel("Current configured Solari ecosystem")
-    .check();
+  await page.getByLabel("Current configured Solari ecosystem").check();
   await page.getByRole("button", { name: "Start verification" }).click();
   await expect(
     page.getByRole("heading", { name: "Current configured Solari ecosystem" }),
