@@ -55,7 +55,7 @@ def load_settings() -> Settings:
         manifest_path=REPOSITORY_ROOT
         / "noxyn_solari"
         / "manifests"
-        / "sandbox-create-evolution.v4.json",
+        / "sandbox-create-evolution.v5.json",
         executor_mode=cast(Literal["replay", "live"], executor_mode),
         solari_api_key=solari_api_key,
         solari_api_base_url=os.getenv(

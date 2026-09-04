@@ -9,5 +9,7 @@ Phase 4 evidence. `sandbox-create-evolution.v2.json` retains the Phase 5
 Python-only execution contract. `sandbox-create-evolution.v3.json` adds the
 aligned TypeScript subject and replay under that same bounded execution
 contract. `sandbox-create-evolution.v4.json` adds the exact documentation
-code-block subject plus source-bound fix-verification replays. The worker uses
-v4 by default.
+code-block subject plus source-bound fix-verification replays.
+`sandbox-create-evolution.v5.json` adds the aligned Go runtime subject under
+the same executor contract, with a deterministic replay fixture. The worker
+uses v5 by default.

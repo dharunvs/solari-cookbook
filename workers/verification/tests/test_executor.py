@@ -8,6 +8,7 @@ from noxyn_verification_worker.executor import (
     ExecutionRequest,
     ReplayVerificationExecutor,
     SolariSandboxExecutor,
+    command_sha256,
     redact_and_bound,
 )
 
@@ -27,6 +28,14 @@ TYPESCRIPT_SOURCE_PATH = (
     / "sandbox-create-evolution"
     / "runtime-typescript"
     / "main.mjs"
+)
+GO_SOURCE_PATH = (
+    ROOT
+    / "noxyn_solari"
+    / "fixtures"
+    / "sandbox-create-evolution"
+    / "runtime-go"
+    / "main.go"
 )
 
 
@@ -74,6 +83,28 @@ def _typescript_request() -> ExecutionRequest:
     )
 
 
+def _go_request() -> ExecutionRequest:
+    body = GO_SOURCE_PATH.read_bytes()
+    return ExecutionRequest(
+        language="go",
+        source_surface="go",
+        phase="VERIFY",
+        package_name="github.com/solari-sdk/solari-sandbox-go",
+        package_version="v0.1.2",
+        source_path=str(GO_SOURCE_PATH.relative_to(ROOT)),
+        source=body,
+        source_sha256="54fbf77c06c0344dc583ab9ad363b6d998b2187c5c17bd4a7ae6c5628fbc700f",
+        timeout_seconds=45,
+        max_output_bytes=16384,
+        replay_path=ROOT
+        / "noxyn_solari"
+        / "fixtures"
+        / "sandbox-create-evolution"
+        / "replay"
+        / "go-mem-mb-pass.json",
+    )
+
+
 def test_replay_is_bound_to_source_and_reproduces_subject_failure() -> None:
     async def journey() -> None:
         result = await ReplayVerificationExecutor().execute(
@@ -112,6 +143,24 @@ def test_typescript_replay_uses_same_contract_and_passes() -> None:
         assert result.subject_state == "PASS"
         assert result.exit_code == 0
         assert "memMb" in result.stdout
+        assert result.cleanup_state == "PASS"
+
+    asyncio.run(journey())
+
+
+def test_go_replay_is_labelled_and_bound_to_the_pinned_module() -> None:
+    async def journey() -> None:
+        result = await ReplayVerificationExecutor().execute(
+            _go_request(), lambda: asyncio.sleep(0, result=False)
+        )
+        assert result.backend == "REPLAY"
+        assert result.language == "go"
+        assert result.package_name == "github.com/solari-sdk/solari-sandbox-go"
+        assert result.package_version == "v0.1.2"
+        assert result.infrastructure_state == "PASS"
+        assert result.subject_state == "PASS"
+        assert result.exit_code == 0
+        assert "MemMb" in result.stdout
         assert result.cleanup_state == "PASS"
 
     asyncio.run(journey())
@@ -293,6 +342,101 @@ def test_solari_executor_installs_and_runs_typescript_with_argv_only(
     asyncio.run(journey())
 
 
+def test_solari_executor_installs_and_runs_go_with_pinned_module_and_argv_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import solari_sandbox
+
+    calls: list[tuple[str, list[str], str | None]] = []
+    directories: list[str] = []
+    writes: list[tuple[str, bytes, int]] = []
+    killed: list[str] = []
+
+    class Handle:
+        async def wait(self) -> int:
+            return 0
+
+        async def kill(self) -> None:
+            return None
+
+    class Commands:
+        async def start(self, command: str, **kwargs: object) -> Handle:
+            args = kwargs["args"]
+            cwd = kwargs["cwd"]
+            assert isinstance(args, list)
+            assert cwd is None or isinstance(cwd, str)
+            calls.append((command, args, cwd))
+            if command == "go" and args == ["run", "."]:
+                callback = kwargs["on_stdout"]
+                assert callable(callback)
+                callback("Go Sandbox.Create(CreateOptions{MemMb}) succeeded.\n")
+            return Handle()
+
+    class Files:
+        async def mkdir(self, path: str) -> None:
+            directories.append(path)
+
+        async def write(self, path: str, body: bytes, mode: int) -> None:
+            writes.append((path, body, mode))
+
+    class Sandbox:
+        sandboxId = "sbx_go"
+        commands = Commands()
+        files = Files()
+
+        async def connect(self) -> None:
+            return None
+
+    class Client:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "Client":
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def create(self, **_kwargs: object) -> Sandbox:
+            return Sandbox()
+
+        async def kill(self, sandbox_id: str) -> None:
+            killed.append(sandbox_id)
+
+    monkeypatch.setattr(solari_sandbox, "SandboxClient", Client)
+
+    async def journey() -> None:
+        request = _go_request()
+        result = await SolariSandboxExecutor(
+            api_key="solari_test_secretvalue", base_url="https://example.test"
+        ).execute(request, lambda: asyncio.sleep(0, result=False))
+        assert result.infrastructure_state == "PASS"
+        assert result.subject_state == "PASS"
+        assert result.language == "go"
+        assert result.cleanup_state == "PASS"
+        assert calls == [
+            ("go", ["mod", "download"], "/tmp/noxyn-go"),
+            ("go", ["run", "."], "/tmp/noxyn-go"),
+        ]
+        assert directories == ["/tmp/noxyn-go"]
+        assert [path for path, _, _ in writes] == [
+            "/tmp/noxyn-go/go.mod",
+            "/tmp/noxyn-go/go.sum",
+            "/tmp/noxyn-go/main.go",
+        ]
+        assert b"github.com/solari-sdk/solari-sandbox-go v0.1.2" in writes[0][1]
+        assert writes[2] == ("/tmp/noxyn-go/main.go", request.source, 0o600)
+        assert killed == ["sbx_go"]
+
+    asyncio.run(journey())
+
+
+def test_go_plan_rejects_an_unpinned_module_request() -> None:
+    request = replace(_go_request(), package_version="v0.1.3")
+    with pytest.raises(ValueError, match="reviewed pinned module"):
+        command_sha256(request)
+
+
 @pytest.mark.live
 @pytest.mark.skipif(
     os.getenv("NOXYN_RUN_LIVE_TESTS") != "true" or not os.getenv("SOLARI_API_KEY"),
@@ -323,6 +467,25 @@ def test_live_solari_controlled_typescript_pass_cleans_up() -> None:
             api_key=os.environ["SOLARI_API_KEY"],
             base_url=os.getenv("SOLARI_API_BASE_URL", "https://api.getsolari.com"),
         ).execute(_typescript_request(), lambda: asyncio.sleep(0, result=False))
+        assert result.infrastructure_state == "PASS"
+        assert result.subject_state == "PASS"
+        assert result.cleanup_state == "PASS"
+        assert result.sandbox_id and result.sandbox_id.startswith("sbx_")
+
+    asyncio.run(journey())
+
+
+@pytest.mark.live
+@pytest.mark.skipif(
+    os.getenv("NOXYN_RUN_LIVE_TESTS") != "true" or not os.getenv("SOLARI_API_KEY"),
+    reason="set NOXYN_RUN_LIVE_TESTS=true and SOLARI_API_KEY",
+)
+def test_live_solari_controlled_go_pass_cleans_up() -> None:
+    async def journey() -> None:
+        result = await SolariSandboxExecutor(
+            api_key=os.environ["SOLARI_API_KEY"],
+            base_url=os.getenv("SOLARI_API_BASE_URL", "https://api.getsolari.com"),
+        ).execute(_go_request(), lambda: asyncio.sleep(0, result=False))
         assert result.infrastructure_state == "PASS"
         assert result.subject_state == "PASS"
         assert result.cleanup_state == "PASS"

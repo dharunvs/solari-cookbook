@@ -64,7 +64,7 @@ class PostgresJobQueue:
             self.repository_root
             / "noxyn_solari"
             / "manifests"
-            / "sandbox-create-evolution.v4.json"
+            / "sandbox-create-evolution.v5.json"
         )
         self.executor = executor or ReplayVerificationExecutor()
 
@@ -193,7 +193,7 @@ class PostgresJobQueue:
             return
 
         last_evidence_artifact_id: UUID | None = None
-        for execution_key in ("python", "docs_python", "typescript"):
+        for execution_key in ("python", "docs_python", "typescript", "go"):
             execution_config = manifest["execution"][execution_key]
             language = cast(Language, str(execution_config["language"]))
             surface = str(execution_config["sourceSurface"])

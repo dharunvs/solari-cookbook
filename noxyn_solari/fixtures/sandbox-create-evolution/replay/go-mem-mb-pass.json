@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "noxyn-execution-replay/1.0",
+  "fixture": true,
+  "language": "go",
+  "sourceSurface": "go",
+  "phase": "VERIFY",
+  "package": {
+    "name": "github.com/solari-sdk/solari-sandbox-go",
+    "version": "v0.1.2"
+  },
+  "sourceSha256": "54fbf77c06c0344dc583ab9ad363b6d998b2187c5c17bd4a7ae6c5628fbc700f",
+  "infrastructure": {"state": "PASS", "step": "execute"},
+  "subject": {
+    "state": "PASS",
+    "exitCode": 0,
+    "stdout": "Go Sandbox.Create(CreateOptions{MemMb}) succeeded.\n",
+    "stderr": ""
+  },
+  "durationMs": 1184,
+  "cleanupState": "PASS"
+}

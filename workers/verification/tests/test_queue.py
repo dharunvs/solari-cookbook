@@ -87,7 +87,7 @@ def test_claim_is_exclusive_and_expired_lease_recovers(tmp_path: Path) -> None:
             """,
             (run_id,),
         ).fetchone()
-    assert run == ("COMPLETED", "COMPLETED", 2, 13)
+    assert run == ("COMPLETED", "COMPLETED", 2, 14)
     with psycopg.connect(DEFAULT_DATABASE_URL) as connection:
         findings = connection.execute(
             "SELECT source_surface, lifecycle_state FROM findings WHERE run_id = %s ORDER BY source_surface",
@@ -114,6 +114,16 @@ def test_claim_is_exclusive_and_expired_lease_recovers(tmp_path: Path) -> None:
             1,
             "PASS",
             "cf6de89fa93053e3967c1a64fccf21b75017723f63a602dc4612a03484c8e066",
+        ),
+        (
+            "go",
+            False,
+            "REPLAY",
+            "PASS",
+            "PASS",
+            0,
+            "PASS",
+            "54fbf77c06c0344dc583ab9ad363b6d998b2187c5c17bd4a7ae6c5628fbc700f",
         ),
         (
             "python",
