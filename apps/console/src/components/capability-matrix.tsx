@@ -42,7 +42,14 @@ function runtimeLabel(runtime: Runtime) {
   if (runtime.sourceSurface === "docs_python") return "Python docs runtime";
   return runtime.language === "typescript"
     ? "TypeScript runtime"
-    : "Python runtime";
+    : runtime.language === "go"
+      ? "Go runtime"
+      : "Python runtime";
+}
+
+function runtimeEvidenceLabel(runtime: Runtime) {
+  if (!runtime.executionId) return null;
+  return `Infrastructure ${runtime.infrastructureState} · Subject ${runtime.subjectState} · ${runtime.backend} · FIXTURE`;
 }
 
 export function CapabilityMatrix({
@@ -117,6 +124,9 @@ export function CapabilityMatrix({
                 </span>
               </div>
               <p className="mt-3 text-sm text-body">{runtime.summary}</p>
+              <p className="mt-3 text-xs text-body">
+                {runtimeEvidenceLabel(runtime)}
+              </p>
             </Link>
           ) : (
             <article
@@ -201,6 +211,11 @@ export function CapabilityMatrix({
                       NOT RUN
                     </span>
                   )}
+                  {runtimeEvidenceLabel(runtime) ? (
+                    <p className="mt-2 text-xs text-body">
+                      {runtimeEvidenceLabel(runtime)}
+                    </p>
+                  ) : null}
                 </td>
               ))}
             </tr>

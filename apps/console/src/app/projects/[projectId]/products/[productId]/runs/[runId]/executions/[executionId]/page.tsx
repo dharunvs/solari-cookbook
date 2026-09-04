@@ -58,7 +58,9 @@ export default async function ExecutionPage({
       ? "Python documentation"
       : execution.language === "typescript"
         ? "TypeScript"
-        : "Python";
+        : execution.language === "go"
+          ? "Go"
+          : "Python";
 
   return (
     <main className="min-h-screen bg-canvas-soft text-ink" id="main-content">
@@ -133,7 +135,11 @@ export default async function ExecutionPage({
               <dt className="text-body">Package</dt>
               <dd className="mt-1 font-mono text-xs">
                 {execution.package_name}
-                {execution.language === "typescript" ? "@" : "=="}
+                {execution.language === "go"
+                  ? "@"
+                  : execution.language === "typescript"
+                    ? "@"
+                    : "=="}
                 {execution.package_version}
               </dd>
             </div>

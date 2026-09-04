@@ -19,6 +19,14 @@ type Analysis = {
   proposals: Proposal[];
 };
 
+function languageLabel(language: Execution["language"]) {
+  return language === "typescript"
+    ? "TypeScript"
+    : language === "go"
+      ? "Go"
+      : "Python";
+}
+
 function date(value: string | null | undefined) {
   return value
     ? new Intl.DateTimeFormat(undefined, {
@@ -158,6 +166,7 @@ export function RunDetail({
                 verificationComplete,
               ],
               ["Run independent TypeScript verification", verificationComplete],
+              ["Run independent Go verification", verificationComplete],
               ["Persist immutable execution evidence", verificationComplete],
             ].map(([label, complete]) => (
               <li
@@ -176,9 +185,9 @@ export function RunDetail({
           </ol>
           <div className="mt-8 rounded-md border border-hairline bg-canvas-soft p-4 text-sm text-body">
             This controlled API-evolution fixture verifies the Python example,
-            exact Python documentation block, and TypeScript example against
-            pinned packages. Replay mode is deterministic CI evidence; live mode
-            creates a fresh Solari Sandbox for every subject.
+            exact Python documentation block, TypeScript example, and Go example
+            against pinned packages. Replay mode is deterministic CI evidence;
+            live mode creates a fresh Solari Sandbox for every subject.
           </div>
           {!terminalStates.has(run.state) ? (
             <button
@@ -266,7 +275,7 @@ export function RunDetail({
                 <div>
                   <p className="font-mono text-xs text-body">RUNTIME PARITY</p>
                   <h2 className="mt-2 font-medium" id="parity-heading">
-                    Python and TypeScript
+                    Python, TypeScript, and Go
                   </h2>
                 </div>
                 <span
@@ -278,7 +287,7 @@ export function RunDetail({
               <p className="mt-3 text-sm text-body">
                 {analysis.matrix.parity.summary}
               </p>
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
                 {analysis.executions
                   .filter(
                     (execution) =>
@@ -292,9 +301,7 @@ export function RunDetail({
                     >
                       <div className="flex items-center justify-between gap-3">
                         <h3 className="text-sm font-medium">
-                          {execution.language === "typescript"
-                            ? "TypeScript"
-                            : "Python"}
+                          {languageLabel(execution.language)}
                         </h3>
                         <span
                           className={`rounded-full px-2 py-1 text-[0.6875rem] font-semibold ${execution.infrastructure_state === "FAIL" ? "bg-warning-soft text-warning-deep" : execution.subject_state === "PASS" ? "bg-success-soft text-success-deep" : "bg-error-soft text-error-deep"}`}
@@ -312,11 +319,8 @@ export function RunDetail({
                         className="mt-4 inline-flex text-sm font-medium underline underline-offset-4"
                         href={`/projects/${projectId}/products/${productId}/runs/${run.id}/executions/${execution.id}`}
                       >
-                        View{" "}
-                        {execution.language === "typescript"
-                          ? "TypeScript"
-                          : "Python"}{" "}
-                        execution evidence
+                        View {languageLabel(execution.language)} execution
+                        evidence
                       </Link>
                     </article>
                   ))}
