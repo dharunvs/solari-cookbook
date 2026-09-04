@@ -87,26 +87,15 @@ package identities, and execution-result interpretation.
 
 ## Frontend
 
-- Follow `DESIGN.md` for palette, typography, radii, spacing, and restrained
-  elevation. It is inspiration, not a requirement to reproduce Vercel branding.
-- The protected console is denser than a marketing page. Reserve large mesh
-  gradients and extreme whitespace for authentication or onboarding.
-- Use the local `tailwind-4-docs` skill for Tailwind v4 work. Confirm its docs
-  snapshot is initialized and no older than one week before relying on it.
-- Use `react-best-practices` when implementing or reviewing React/Next.js code.
-- Use `web-design-guidelines` for accessibility and UX review.
-- Prefer semantic HTML, visible focus, keyboard operation, useful labels, and
-  reduced-motion support.
-- Every data page needs loading, empty, authorization-failure, recoverable
-  error, and narrow-screen states.
-- URL state should preserve meaningful filters, selected runs, and deep links.
+For tasks whose primary scope includes React/Next.js UI:
+- follow DESIGN.md
+- use react-best-practices
+- use tailwind-4-docs when changing Tailwind classes/config
+- use web-design-guidelines when doing UX/accessibility review
+- use next-dev-loop when runtime browser verification is part of the task
 
-When Next.js is installed, read the bundled version-matched documentation at
-`node_modules/next/dist/docs/` before changing framework code. Preserve any
-Next.js-managed block that `next dev` adds to this file.
-
-Use `next-dev-loop` after the console is runnable to inspect the live Next.js
-server and verify relevant routes after edits.
+Do not load frontend design/review skills for incidental generated-client,
+enum, or compatibility changes unless the issue explicitly includes UI work.
 
 ## API and generated client
 
@@ -124,10 +113,8 @@ server and verify relevant routes after edits.
   proposal ambiguity rejection.
 - Integration-test workspace isolation, idempotency, job leases, recovery, and
   immutable artifact reads.
-- Use the local `playwright-cli` skill for browser journeys once the console
-  runs. Cover registration, resumable onboarding, project/product creation,
-  run polling, evidence inspection, cancellation, session expiry, and mobile
-  matrix cards.
+- Use playwright-cli only for tickets whose acceptance criteria require browser
+behavior. Do not invoke browser verification for backend-only issues.
 - Live Solari tests must be opt-in, bounded, and cleanup-asserting. CI must have
   a deterministic replay path that does not require `SOLARI_API_KEY`.
 
