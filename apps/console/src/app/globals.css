@@ -72,4 +72,112 @@
   a {
     transition-duration: 0ms;
   }
+
+  .noxyn-overlay,
+  .noxyn-overlay::backdrop,
+  .noxyn-dialog {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
+
+.noxyn-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 1rem;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  place-items: center;
+  overscroll-behavior: contain;
+}
+
+.noxyn-overlay::backdrop {
+  background: rgb(23 23 23 / 38%);
+  animation: noxyn-overlay-fade-in 150ms ease-out;
+}
+
+.noxyn-dialog {
+  width: min(100%, 32rem);
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--color-canvas);
+  box-shadow: 0 24px 48px rgb(0 0 0 / 18%);
+  animation: noxyn-dialog-enter 150ms ease-out;
+}
+
+.noxyn-dialog__header {
+  padding: 1.5rem 1.5rem 0;
+}
+
+.noxyn-drawer {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  border-radius: 0;
+  animation-name: noxyn-sheet-enter;
+}
+
+@media (min-width: 40rem) {
+  .noxyn-overlay {
+    justify-items: end;
+    padding: 1rem;
+  }
+
+  .noxyn-drawer {
+    width: min(100%, 34rem);
+    height: calc(100dvh - 2rem);
+    max-height: none;
+    border-radius: var(--radius-lg);
+    animation-name: noxyn-drawer-enter;
+  }
+}
+
+@supports (padding: env(safe-area-inset-top)) {
+  .noxyn-overlay {
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    padding-left: max(1rem, env(safe-area-inset-left));
+  }
+
+  .noxyn-drawer {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@keyframes noxyn-overlay-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes noxyn-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+}
+
+@keyframes noxyn-sheet-enter {
+  from {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+}
+
+@keyframes noxyn-drawer-enter {
+  from {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
 }
