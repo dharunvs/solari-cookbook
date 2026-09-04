@@ -136,6 +136,8 @@ export function RunDetail({
   const verifiedProposals = analysis?.proposals.filter(
     (proposal) => proposal.state === "FIX_VERIFIED",
   ).length;
+  const controlledFixture = run.scenario === "controlled_api_evolution";
+  const findingCount = analysis?.findings.length ?? 0;
 
   return (
     <div className="mt-8">
@@ -147,10 +149,13 @@ export function RunDetail({
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="font-mono text-xs text-body">
-                RUN / {run.id.slice(0, 8)} · CONTROLLED FIXTURE
+                RUN / {run.id.slice(0, 8)} ·{" "}
+                {controlledFixture ? "CONTROLLED FIXTURE" : "CURRENT CONFIGURATION"}
               </p>
               <h1 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-balance">
-                Controlled API evolution
+                {controlledFixture
+                  ? "Controlled API evolution"
+                  : "Current configured Solari ecosystem"}
               </h1>
             </div>
             <RunStatus state={run.state} />
@@ -161,10 +166,14 @@ export function RunDetail({
               ["Snapshot and hash sources", snapshotComplete],
               ["Extract and normalize capabilities", analysisComplete],
               ["Run independent Python verification", verificationComplete],
-              [
-                "Execute the exact Python documentation block",
-                verificationComplete,
-              ],
+              ...(controlledFixture
+                ? [
+                    [
+                      "Execute the exact Python documentation block",
+                      verificationComplete,
+                    ],
+                  ]
+                : []),
               ["Run independent TypeScript verification", verificationComplete],
               ["Run independent Go verification", verificationComplete],
               ["Persist immutable execution evidence", verificationComplete],
@@ -184,10 +193,11 @@ export function RunDetail({
             ))}
           </ol>
           <div className="mt-8 rounded-md border border-hairline bg-canvas-soft p-4 text-sm text-body">
-            This controlled API-evolution fixture verifies the Python example,
-            exact Python documentation block, TypeScript example, and Go example
-            against pinned packages. Replay mode is deterministic CI evidence;
-            live mode creates a fresh Solari Sandbox for every subject.
+            {controlledFixture
+              ? "This controlled API-evolution fixture verifies the Python example, exact Python documentation block, TypeScript example, and Go example against pinned packages."
+              : "This current configured scan verifies the pinned Python, TypeScript, and Go sources against their exact package identities."}{" "}
+            Replay mode is deterministic CI evidence; live mode creates a fresh
+            Solari Sandbox for every subject.
           </div>
           {!terminalStates.has(run.state) ? (
             <button
@@ -245,7 +255,7 @@ export function RunDetail({
               ["Capabilities", analysis.matrix.summary.capabilities],
               ["Aligned cells", analysis.matrix.summary.aligned],
               ["Suspected", analysis.matrix.summary.suspected],
-              ["Fixes verified", `${verifiedProposals} / 2`],
+              ["Fixes verified", `${verifiedProposals} / ${findingCount}`],
             ].map(([label, value]) => (
               <div
                 className="rounded-lg border border-hairline bg-canvas p-4 shadow-card"
@@ -337,15 +347,17 @@ export function RunDetail({
                   PROPOSAL LIFECYCLE
                 </p>
                 <h2 className="mt-2 font-medium" id="fixes-heading">
-                  Reproduced fixture drift
+                  {findingCount ? "Reproduced drift" : "No reproduced drift"}
                 </h2>
               </div>
               <span
-                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${verifiedProposals === 2 ? "bg-success-soft text-success-deep" : "bg-warning-soft text-warning-deep"}`}
+                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${findingCount === 0 || verifiedProposals === findingCount ? "bg-success-soft text-success-deep" : "bg-warning-soft text-warning-deep"}`}
               >
-                {verifiedProposals === 2
-                  ? "FIXES VERIFIED"
-                  : `${verifiedProposals} / 2 VERIFIED`}
+                {findingCount === 0
+                  ? "NO FINDINGS"
+                  : verifiedProposals === findingCount
+                    ? "FIXES VERIFIED"
+                    : `${verifiedProposals} / ${findingCount} VERIFIED`}
               </span>
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">

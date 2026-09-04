@@ -89,4 +89,37 @@ describe("RunDetail", () => {
       );
     }
   });
+
+  it("renders a current no-drift run without calling it a controlled fixture", () => {
+    const markup = renderToStaticMarkup(
+      <RunDetail
+        initialAnalysis={{
+          matrix: { ...matrix, fixture: false, scenario: "current-configured-solari" },
+          findings: [],
+          executions: executions.map(
+            (execution) => ({ ...execution, subject_state: "PASS" }) as Execution,
+          ),
+          proposals: [],
+        }}
+        initialRun={{
+          id: "current-run-id",
+          state: "COMPLETED",
+          scenario: "current_configured_solari",
+          configuration_version: 1,
+          attempt: 1,
+          max_attempts: 1,
+          created_at: "2026-09-04T00:00:00Z",
+          completed_at: "2026-09-04T00:01:00Z",
+        } as Run}
+        productId="product-id"
+        projectId="project-id"
+      />,
+    );
+
+    expect(markup).toContain("Current configured Solari ecosystem");
+    expect(markup).toContain("No reproduced drift");
+    expect(markup).toContain("NO FINDINGS");
+    expect(markup).toContain("View Go execution evidence");
+    expect(markup).not.toContain("CONTROLLED FIXTURE");
+  });
 });

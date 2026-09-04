@@ -227,7 +227,9 @@ def test_run_is_idempotent_pollable_and_cancellable(monkeypatch: object) -> None
         assert cancelled.json()["completed_at"] is not None
 
 
-def test_current_configured_run_is_a_distinct_idempotent_mode(monkeypatch: object) -> None:
+def test_current_configured_run_is_a_distinct_idempotent_mode(
+    monkeypatch: object,
+) -> None:
     monkeypatch.setenv("NOXYN_E2E_AUTH_BYPASS", "true")  # type: ignore[attr-defined]
     subject = f"e2e_{uuid4().hex}"
     with TestClient(create_app()) as client:
@@ -246,6 +248,68 @@ def test_current_configured_run_is_a_distinct_idempotent_mode(monkeypatch: objec
         assert current.json()["scenario"] == "current_configured_solari"
         assert fixture.status_code == 202
         assert fixture.json()["scenario"] == "controlled_api_evolution"
+
+
+def test_current_configured_run_completes_aligned_with_go_evidence(
+    monkeypatch: object, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("NOXYN_E2E_AUTH_BYPASS", "true")  # type: ignore[attr-defined]
+    owner = f"e2e_{uuid4().hex}"
+    outsider = f"e2e_{uuid4().hex}"
+    with TestClient(create_app()) as client:
+        product_id = _configured_product(client, owner)
+        run = client.post(
+            f"/v1/products/{product_id}/runs",
+            headers=_headers(owner, "current-complete"),
+            json={"scenario": "current_configured_solari"},
+        ).json()
+
+        async def finish_run() -> None:
+            queue = PostgresJobQueue(DEFAULT_DATABASE_URL, lease_seconds=30)
+            for _ in range(30):
+                lease = await queue.claim("current-api-test")
+                if lease is not None:
+                    await queue.execute(lease, LocalArtifactStore(tmp_path))
+                    if str(lease.run_id) == run["id"]:
+                        return
+                await asyncio.sleep(0.02)
+            raise AssertionError("current run was not claimed")
+
+        asyncio.run(finish_run())
+        matrix = client.get(f"/v1/runs/{run['id']}/matrix", headers=_headers(owner))
+        assert matrix.status_code == 200
+        assert matrix.json()["summary"]["aligned"] == 6
+        assert matrix.json()["summary"]["suspected"] == 0
+        assert matrix.json()["parity"] == {
+            "state": "MATCH",
+            "summary": "Python, TypeScript, and Go all report PASS.",
+            "comparedLanguages": ["python", "typescript", "go"],
+        }
+        assert (
+            client.get(
+                f"/v1/runs/{run['id']}/findings", headers=_headers(owner)
+            ).json()["items"]
+            == []
+        )
+        executions = client.get(
+            f"/v1/runs/{run['id']}/executions", headers=_headers(owner)
+        ).json()["items"]
+        assert [(item["language"], item["subject_state"]) for item in executions] == [
+            ("go", "PASS"),
+            ("python", "PASS"),
+            ("typescript", "PASS"),
+        ]
+        go = next(item for item in executions if item["language"] == "go")
+        assert go["infrastructure_state"] == "PASS"
+        assert go["cleanup_state"] == "PASS"
+        assert len(go["source_sha256"]) == 64
+        assert len(go["evidence"]["sha256"]) == 64
+        assert (
+            client.get(
+                f"/v1/executions/{go['id']}", headers=_headers(outsider)
+            ).status_code
+            == 404
+        )
 
 
 def test_leased_run_cancellation_waits_for_worker_cleanup(
@@ -369,7 +433,7 @@ def test_completed_run_exposes_runtime_matrix_findings_and_execution(
             cell for cell in runtime_cells if cell["sourceSurface"] == "go"
         )
         assert go_runtime["state"] == "PASS"
-        assert go_runtime["summary"] == "The controlled Go example subject passed."
+        assert go_runtime["summary"] == "The Go example subject passed."
         assert go_runtime["language"] == "go"
         assert go_runtime["infrastructureState"] == "PASS"
         assert go_runtime["subjectState"] == "PASS"

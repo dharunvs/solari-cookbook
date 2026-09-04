@@ -588,9 +588,9 @@ async def _matrix_for_run(
         summary = (
             f"Infrastructure failed; the {label} subject was not run."
             if runtime_state == "UNVERIFIED"
-            else f"The controlled {label} subject passed."
+            else f"The {label} subject passed."
             if runtime_state == "PASS"
-            else f"The controlled {label} failure was reproduced."
+            else f"The {label} failure was reproduced."
         )
         runtime_cells.append(
             RuntimeCellView(

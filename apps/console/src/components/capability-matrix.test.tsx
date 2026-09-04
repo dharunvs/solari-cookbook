@@ -9,7 +9,7 @@ type Runtime = components["schemas"]["RuntimeCellView"];
 
 const goRuntime: Runtime = {
   state: "PASS",
-  summary: "The controlled Go example subject passed.",
+  summary: "The Go example subject passed.",
   language: "go",
   sourceSurface: "go",
   infrastructureState: "PASS",

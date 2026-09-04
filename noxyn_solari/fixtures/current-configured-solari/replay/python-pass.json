@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "noxyn-execution-replay/1.0",
+  "fixture": true,
+  "language": "python",
+  "sourceSurface": "python",
+  "phase": "VERIFY",
+  "package": {"name": "solari-sandbox", "version": "0.2.0"},
+  "sourceSha256": "44f249d2e228ecd7567961bc03e10a025a9f0e0c3aafcc0760c62fec3694b8be",
+  "infrastructure": {"state": "PASS", "step": "execute"},
+  "subject": {"state": "PASS", "exitCode": 0, "stdout": "Python SandboxClient.create(mem_mb=2048) succeeded.\n", "stderr": ""},
+  "durationMs": 712,
+  "cleanupState": "PASS"
+}

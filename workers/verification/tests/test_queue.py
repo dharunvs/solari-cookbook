@@ -1,12 +1,10 @@
 # ruff: noqa: E501
 import asyncio
-from copy import deepcopy
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import psycopg
 import pytest
-from noxyn_verification_worker import queue as queue_module
 from noxyn_verification_worker.artifacts import LocalArtifactStore
 from noxyn_verification_worker.config import DEFAULT_DATABASE_URL
 from noxyn_verification_worker.queue import PostgresJobQueue
@@ -133,7 +131,7 @@ def test_claim_is_exclusive_and_expired_lease_recovers(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
-def test_current_mode_completes_static_analysis_without_runtime_execution(
+def test_current_mode_completes_with_three_hash_bound_runtime_executions(
     tmp_path: Path,
 ) -> None:
     run_id, job_id = _job_fixture("current_configured_solari")
@@ -164,57 +162,5 @@ def test_current_mode_completes_static_analysis_without_runtime_execution(
         ).fetchone()
     assert run[0] == "COMPLETED"
     assert len(run[1]) == 64
-    assert execution_count == (0,)
+    assert execution_count == (3,)
     assert finding_count == (0,)
-
-
-@pytest.mark.integration
-def test_aligned_scan_completes_without_runtime_execution(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    run_id, _ = _job_fixture()
-    calls: list[object] = []
-    original_build_matrix = queue_module.build_matrix
-
-    def aligned_matrix(*args: object, **kwargs: object) -> dict[str, object]:
-        matrix = deepcopy(original_build_matrix(*args, **kwargs))
-        for cell in matrix["rows"][0]["cells"]:  # type: ignore[index]
-            cell["state"] = "ALIGNED"
-        matrix["summary"] = {
-            "capabilities": 1,
-            "aligned": 6,
-            "suspected": 0,
-            "notExpected": 0,
-            "unverified": 0,
-        }
-        return matrix
-
-    class NeverExecute:
-        async def execute(self, *_: object) -> object:
-            calls.append(object())
-            raise AssertionError("an aligned scan must not execute a runtime subject")
-
-    monkeypatch.setattr(queue_module, "build_matrix", aligned_matrix)
-    queue = PostgresJobQueue(
-        DEFAULT_DATABASE_URL, lease_seconds=30, executor=NeverExecute()  # type: ignore[arg-type]
-    )
-
-    async def journey() -> None:
-        lease = await queue.claim("aligned-worker")
-        assert lease is not None
-        assert lease.run_id == run_id
-        await queue.execute(lease, LocalArtifactStore(tmp_path))
-
-    asyncio.run(journey())
-    assert calls == []
-    with psycopg.connect(DEFAULT_DATABASE_URL) as connection:
-        state, findings, executions = connection.execute(
-            """
-            SELECT r.state,
-                   (SELECT count(*) FROM findings WHERE run_id = r.id),
-                   (SELECT count(*) FROM execution_attempts WHERE run_id = r.id)
-            FROM verification_runs r WHERE r.id = %s
-            """,
-            (run_id,),
-        ).fetchone()
-    assert (state, findings, executions) == ("COMPLETED", 0, 0)

@@ -94,5 +94,28 @@
       "identity": "gomod:github.com/solari-sdk/solari-sandbox-go@v0.1.2",
       "sourceRevision": "15ae65c3177f4eeb270e000f5065787abe581e0f"
     }
-  ]
+  ],
+  "execution": {
+    "python": {
+      "language": "python",
+      "sourceSurface": "python",
+      "replay": "noxyn_solari/fixtures/current-configured-solari/replay/python-pass.json",
+      "timeoutSeconds": 45,
+      "maxOutputBytes": 16384
+    },
+    "typescript": {
+      "language": "typescript",
+      "sourceSurface": "typescript",
+      "replay": "noxyn_solari/fixtures/current-configured-solari/replay/typescript-pass.json",
+      "timeoutSeconds": 45,
+      "maxOutputBytes": 16384
+    },
+    "go": {
+      "language": "go",
+      "sourceSurface": "go",
+      "replay": "noxyn_solari/fixtures/current-configured-solari/replay/go-pass.json",
+      "timeoutSeconds": 45,
+      "maxOutputBytes": 16384
+    }
+  }
 }

@@ -92,9 +92,9 @@ export default async function ExecutionPage({
 
           {execution.backend === "REPLAY" ? (
             <div className="mt-6 rounded-md border border-warning-deep/30 bg-warning-soft p-4 text-sm text-warning-deep">
-              Controlled replay evidence for deterministic local and CI runs. It
-              is bound to this exact package and source hash, but is not a live
-              Solari execution.
+              Deterministic replay evidence for local and CI runs. It is bound
+              to this exact package and source hash, but is not a live Solari
+              execution.
             </div>
           ) : (
             <div className="mt-6 rounded-md border border-hairline bg-canvas-soft p-4 text-sm text-body">

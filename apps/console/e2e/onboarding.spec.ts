@@ -110,7 +110,7 @@ test("registration, resume, and Sandbox configuration journey", async ({
   await expect(
     page.getByRole("heading", { name: "Runtime evidence" }),
   ).toBeVisible();
-  await expect(page.getByText(/Controlled replay evidence/)).toBeVisible();
+  await expect(page.getByText(/Deterministic replay evidence/)).toBeVisible();
   await expect(
     page.getByText(/unexpected keyword argument 'memory'/),
   ).toBeVisible();
@@ -229,4 +229,36 @@ test("registration, resume, and Sandbox configuration journey", async ({
   await expect(page.getByText("Cancelled", { exact: true })).toBeVisible({
     timeout: 30_000,
   });
+
+  await page.getByRole("link", { name: "Run history" }).click();
+  await page
+    .getByLabel("Current configured Solari ecosystem")
+    .check();
+  await page.getByRole("button", { name: "Start verification" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Current configured Solari ecosystem" }),
+  ).toBeVisible({ timeout: 30_000 });
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    await exec(
+      "uv",
+      [
+        "run",
+        "--package",
+        "noxyn-verification-worker",
+        "noxyn-verification-worker",
+        "--once",
+      ],
+      { cwd: repositoryRoot },
+    );
+    if (await page.getByText("MATCH", { exact: true }).isVisible()) break;
+    await page.waitForTimeout(1700);
+  }
+  await expect(page.getByText("NO FINDINGS", { exact: true })).toBeVisible();
+  await expect(page.getByText("MATCH", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "View Go execution evidence" }).click();
+  await expect(page.getByText("GO EXECUTION", { exact: false })).toBeVisible();
+  await expect(
+    page.getByText("github.com/solari-sdk/solari-sandbox-go@v0.1.2"),
+  ).toBeVisible();
+  await expect(page.getByText(/Deterministic replay evidence/)).toBeVisible();
 });

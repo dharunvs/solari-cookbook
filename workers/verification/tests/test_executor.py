@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 import os
 from dataclasses import replace
 from pathlib import Path
@@ -37,6 +39,26 @@ GO_SOURCE_PATH = (
     / "runtime-go"
     / "main.go"
 )
+CURRENT_SOURCE_PATHS = {
+    "python": ROOT
+    / "noxyn_solari"
+    / "current_sources"
+    / "cookbook"
+    / "python"
+    / "main.py",
+    "typescript": ROOT
+    / "noxyn_solari"
+    / "current_sources"
+    / "cookbook"
+    / "typescript"
+    / "main.mjs",
+    "go": ROOT / "noxyn_solari" / "current_sources" / "cookbook" / "go" / "main.go",
+}
+CURRENT_PACKAGES = {
+    "python": ("solari-sandbox", "0.2.0"),
+    "typescript": ("@solarisdk/sandbox", "0.1.2"),
+    "go": ("github.com/solari-sdk/solari-sandbox-go", "v0.1.2"),
+}
 
 
 def _request() -> ExecutionRequest:
@@ -105,6 +127,32 @@ def _go_request() -> ExecutionRequest:
     )
 
 
+def _current_request(language: str) -> ExecutionRequest:
+    source_path = CURRENT_SOURCE_PATHS[language]
+    package_name, package_version = CURRENT_PACKAGES[language]
+    source = source_path.read_bytes()
+    return ExecutionRequest(
+        language=language,  # type: ignore[arg-type]
+        source_surface=language,
+        phase="VERIFY",
+        package_name=package_name,
+        package_version=package_version,
+        source_path=str(source_path.relative_to(ROOT)),
+        source=source,
+        source_sha256=hashlib.sha256(source).hexdigest(),
+        timeout_seconds=45,
+        max_output_bytes=16384,
+        replay_path=(
+            ROOT
+            / "noxyn_solari"
+            / "fixtures"
+            / "current-configured-solari"
+            / "replay"
+            / f"{language}-pass.json"
+        ),
+    )
+
+
 def test_replay_is_bound_to_source_and_reproduces_subject_failure() -> None:
     async def journey() -> None:
         result = await ReplayVerificationExecutor().execute(
@@ -164,6 +212,51 @@ def test_go_replay_is_labelled_and_bound_to_the_pinned_module() -> None:
         assert result.cleanup_state == "PASS"
 
     asyncio.run(journey())
+
+
+def test_current_replay_runs_python_typescript_and_go_independently() -> None:
+    async def journey() -> None:
+        results = await asyncio.gather(
+            *(
+                ReplayVerificationExecutor().execute(
+                    _current_request(language), lambda: asyncio.sleep(0, result=False)
+                )
+                for language in ("python", "typescript", "go")
+            )
+        )
+        assert [result.language for result in results] == ["python", "typescript", "go"]
+        assert all(result.backend == "REPLAY" for result in results)
+        assert all(result.infrastructure_state == "PASS" for result in results)
+        assert all(result.subject_state == "PASS" for result in results)
+        assert all(result.cleanup_state == "PASS" for result in results)
+        assert len({result.source_sha256 for result in results}) == 3
+
+    asyncio.run(journey())
+
+
+def test_current_replay_preserves_infrastructure_and_subject_failure_truth(
+    tmp_path: Path,
+) -> None:
+    request = _current_request("python")
+    payload = json.loads(request.replay_path.read_bytes())
+    payload["infrastructure"] = {"state": "FAIL", "step": "install"}
+    payload["subject"] = {
+        "state": "NOT_RUN",
+        "exitCode": None,
+        "stdout": "",
+        "stderr": "",
+    }
+    unavailable = tmp_path / "infrastructure-failure.json"
+    unavailable.write_text(json.dumps(payload), encoding="utf-8")
+    result = asyncio.run(
+        ReplayVerificationExecutor().execute(
+            replace(request, replay_path=unavailable),
+            lambda: asyncio.sleep(0, result=False),
+        )
+    )
+    assert result.infrastructure_state == "FAIL"
+    assert result.subject_state == "NOT_RUN"
+    assert result.cleanup_state == "PASS"
 
 
 def test_redaction_precedes_combined_output_limit() -> None:

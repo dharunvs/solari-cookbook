@@ -210,30 +210,21 @@ class PostgresJobQueue:
             lease, matrix_reference, "CAPABILITY_MATRIX"
         )
         await self._record_findings(lease, finding_records)
-        if manifest.get("fixture") is False:
-            await self._finish(lease, matrix_reference.id, manifest_reference.sha256)
-            return
         if not await self._begin_verification(lease):
             if await self._cancel_requested(lease):
                 await self._finish_cancelled(lease)
             return
 
-        # Runtime verification is evidence for a static suspicion, not an
-        # additional scan of every configured language.  This also means an
-        # all-aligned current scan completes without manufacturing execution
-        # attempts or findings.
-        runnable_suspected_surfaces = {
-            str(record[1]["surface"])
-            for record in finding_records
-            if str(record[1]["surface"]) in manifest["execution"]
-        }
         last_evidence_artifact_id: UUID | None = None
-        for execution_key, execution_config in manifest["execution"].items():
-            if execution_key not in runnable_suspected_surfaces:
-                continue
+        for execution_key in manifest["execution"]:
+            execution_config = manifest["execution"][execution_key]
             language = cast(Language, str(execution_config["language"]))
             surface = str(execution_config["sourceSurface"])
             snapshot = next(item for item in snapshots if item.surface == surface)
+            if snapshot.body is None:
+                # The immutable unavailable-source artifact is the evidence for
+                # this unverified static fact; never manufacture executable bytes.
+                continue
             execution_source = (
                 extract_python_fence(snapshot.body)
                 if surface == "docs_python"
