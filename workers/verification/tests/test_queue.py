@@ -1,10 +1,12 @@
 # ruff: noqa: E501
 import asyncio
+from copy import deepcopy
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import psycopg
 import pytest
+from noxyn_verification_worker import queue as queue_module
 from noxyn_verification_worker.artifacts import LocalArtifactStore
 from noxyn_verification_worker.config import DEFAULT_DATABASE_URL
 from noxyn_verification_worker.queue import PostgresJobQueue
@@ -89,7 +91,7 @@ def test_claim_is_exclusive_and_expired_lease_recovers(tmp_path: Path) -> None:
             """,
             (run_id,),
         ).fetchone()
-    assert run == ("COMPLETED", "COMPLETED", 2, 14)
+    assert run == ("COMPLETED", "COMPLETED", 2, 12)
     with psycopg.connect(DEFAULT_DATABASE_URL) as connection:
         findings = connection.execute(
             "SELECT source_surface, lifecycle_state FROM findings WHERE run_id = %s ORDER BY source_surface",
@@ -118,16 +120,6 @@ def test_claim_is_exclusive_and_expired_lease_recovers(tmp_path: Path) -> None:
             "cf6de89fa93053e3967c1a64fccf21b75017723f63a602dc4612a03484c8e066",
         ),
         (
-            "go",
-            False,
-            "REPLAY",
-            "PASS",
-            "PASS",
-            0,
-            "PASS",
-            "54fbf77c06c0344dc583ab9ad363b6d998b2187c5c17bd4a7ae6c5628fbc700f",
-        ),
-        (
             "python",
             True,
             "REPLAY",
@@ -136,16 +128,6 @@ def test_claim_is_exclusive_and_expired_lease_recovers(tmp_path: Path) -> None:
             1,
             "PASS",
             "d8129181ad58b87239f9f9c19f3a2f21c4fa426075878c26fa37306e6c7a09fb",
-        ),
-        (
-            "typescript",
-            False,
-            "REPLAY",
-            "PASS",
-            "PASS",
-            0,
-            "PASS",
-            "c44f01192490598f36ecc593b38d53d7194afc74288f0017850dbba5823d1e88",
         ),
     ]
 
@@ -184,3 +166,55 @@ def test_current_mode_completes_static_analysis_without_runtime_execution(
     assert len(run[1]) == 64
     assert execution_count == (0,)
     assert finding_count == (0,)
+
+
+@pytest.mark.integration
+def test_aligned_scan_completes_without_runtime_execution(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    run_id, _ = _job_fixture()
+    calls: list[object] = []
+    original_build_matrix = queue_module.build_matrix
+
+    def aligned_matrix(*args: object, **kwargs: object) -> dict[str, object]:
+        matrix = deepcopy(original_build_matrix(*args, **kwargs))
+        for cell in matrix["rows"][0]["cells"]:  # type: ignore[index]
+            cell["state"] = "ALIGNED"
+        matrix["summary"] = {
+            "capabilities": 1,
+            "aligned": 6,
+            "suspected": 0,
+            "notExpected": 0,
+            "unverified": 0,
+        }
+        return matrix
+
+    class NeverExecute:
+        async def execute(self, *_: object) -> object:
+            calls.append(object())
+            raise AssertionError("an aligned scan must not execute a runtime subject")
+
+    monkeypatch.setattr(queue_module, "build_matrix", aligned_matrix)
+    queue = PostgresJobQueue(
+        DEFAULT_DATABASE_URL, lease_seconds=30, executor=NeverExecute()  # type: ignore[arg-type]
+    )
+
+    async def journey() -> None:
+        lease = await queue.claim("aligned-worker")
+        assert lease is not None
+        assert lease.run_id == run_id
+        await queue.execute(lease, LocalArtifactStore(tmp_path))
+
+    asyncio.run(journey())
+    assert calls == []
+    with psycopg.connect(DEFAULT_DATABASE_URL) as connection:
+        state, findings, executions = connection.execute(
+            """
+            SELECT r.state,
+                   (SELECT count(*) FROM findings WHERE run_id = r.id),
+                   (SELECT count(*) FROM execution_attempts WHERE run_id = r.id)
+            FROM verification_runs r WHERE r.id = %s
+            """,
+            (run_id,),
+        ).fetchone()
+    assert (state, findings, executions) == ("COMPLETED", 0, 0)

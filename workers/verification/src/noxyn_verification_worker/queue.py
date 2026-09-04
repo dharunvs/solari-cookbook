@@ -206,7 +206,9 @@ class PostgresJobQueue:
             body=matrix_body,
         )
         await asyncio.to_thread(store.read, matrix_reference)
-        await self._record_artifact(lease, matrix_reference, "CAPABILITY_MATRIX")
+        matrix_artifact_id = await self._record_artifact(
+            lease, matrix_reference, "CAPABILITY_MATRIX"
+        )
         await self._record_findings(lease, finding_records)
         if manifest.get("fixture") is False:
             await self._finish(lease, matrix_reference.id, manifest_reference.sha256)
@@ -216,9 +218,19 @@ class PostgresJobQueue:
                 await self._finish_cancelled(lease)
             return
 
+        # Runtime verification is evidence for a static suspicion, not an
+        # additional scan of every configured language.  This also means an
+        # all-aligned current scan completes without manufacturing execution
+        # attempts or findings.
+        runnable_suspected_surfaces = {
+            str(record[1]["surface"])
+            for record in finding_records
+            if str(record[1]["surface"]) in manifest["execution"]
+        }
         last_evidence_artifact_id: UUID | None = None
-        for execution_key in ("python", "docs_python", "typescript", "go"):
-            execution_config = manifest["execution"][execution_key]
+        for execution_key, execution_config in manifest["execution"].items():
+            if execution_key not in runnable_suspected_surfaces:
+                continue
             language = cast(Language, str(execution_config["language"]))
             surface = str(execution_config["sourceSurface"])
             snapshot = next(item for item in snapshots if item.surface == surface)
@@ -299,9 +311,13 @@ class PostgresJobQueue:
             if execution.cancelled or await self._cancel_requested(lease):
                 await self._finish_cancelled(lease, last_evidence_artifact_id)
                 return
-        if last_evidence_artifact_id is None:
-            raise RuntimeError("verification produced no execution evidence")
-        await self._finish(lease, last_evidence_artifact_id, manifest_reference.sha256)
+        # The capability matrix is the terminal evidence for an aligned scan;
+        # execution evidence is present only for runnable suspected artifacts.
+        await self._finish(
+            lease,
+            last_evidence_artifact_id or matrix_artifact_id,
+            manifest_reference.sha256,
+        )
 
     def _manifest_path_for(self, scenario: str) -> Path:
         if scenario == "controlled_api_evolution":

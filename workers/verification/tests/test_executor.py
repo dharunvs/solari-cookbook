@@ -257,6 +257,38 @@ def test_solari_executor_cleans_up_and_separates_subject_failure(
     asyncio.run(journey())
 
 
+def test_solari_executor_marks_provisioning_failure_unverified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import solari_sandbox  # type: ignore[import-untyped]
+
+    class Client:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "Client":
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def create(self, **_kwargs: object) -> object:
+            raise RuntimeError("verification sandbox unavailable")
+
+    monkeypatch.setattr(solari_sandbox, "SandboxClient", Client)
+
+    async def journey() -> None:
+        result = await SolariSandboxExecutor(
+            api_key="solari_test_secretvalue", base_url="https://example.test"
+        ).execute(_request(), lambda: asyncio.sleep(0, result=False))
+        assert result.infrastructure_state == "FAIL"
+        assert result.infrastructure_step == "create"
+        assert result.subject_state == "NOT_RUN"
+        assert result.cleanup_state == "NOT_REQUIRED"
+
+    asyncio.run(journey())
+
+
 def test_solari_executor_installs_and_runs_typescript_with_argv_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

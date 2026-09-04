@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import ast
-from datetime import UTC, datetime
 import hashlib
 import json
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -79,8 +79,16 @@ def snapshot_sources(
     if manifest.get("fixture") is True:
         paths.extend(
             [
-                {"surface": "contract_before", "kind": "contract", "path": manifest["contracts"]["before"]},
-                {"surface": "contract_after", "kind": "contract", "path": manifest["contracts"]["after"]},
+                {
+                    "surface": "contract_before",
+                    "kind": "contract",
+                    "path": manifest["contracts"]["before"],
+                },
+                {
+                    "surface": "contract_after",
+                    "kind": "contract",
+                    "path": manifest["contracts"]["after"],
+                },
             ]
         )
     else:
@@ -95,8 +103,16 @@ def snapshot_sources(
             path = _safe_source_path(repository_root, relative)
             body = path.read_bytes()
             snapshots.append(
-                SourceSnapshot(surface, kind, relative, body, sha256(body), identity,
-                    str(source_revision) if source_revision is not None else None, retrieved_at)
+                SourceSnapshot(
+                    surface,
+                    kind,
+                    relative,
+                    body,
+                    sha256(body),
+                    identity,
+                    str(source_revision) if source_revision is not None else None,
+                    retrieved_at,
+                )
             )
         except (OSError, ValueError) as error:
             if item.get("required", True) is False:
@@ -147,7 +163,10 @@ def build_matrix(
                 else "Configured current contract normalized with reviewed bindings."
             )
             if contract_state == "ALIGNED"
-            else "The configured contract source is unavailable or could not be normalized.",
+            else (
+                "The configured contract source is unavailable or could not be "
+                "normalized."
+            ),
         )
     )
 
@@ -173,13 +192,13 @@ def build_matrix(
             cells.append(
                 _cell(
                     surface,
-                    "NOT_EXPECTED",
+                    "UNVERIFIED",
                     expected,
                     None,
                     None,
                     None,
                     None,
-                    "This surface is not configured in the reviewed manifest.",
+                    "Configured source artifact was unavailable; no claim was made.",
                 )
             )
             continue
@@ -193,7 +212,8 @@ def build_matrix(
                     source,
                     None,
                     None,
-                    "The required configured source could not be snapshotted.",
+                    "The required configured source artifact was unavailable and "
+                    "could not be snapshotted.",
                 )
             )
             continue

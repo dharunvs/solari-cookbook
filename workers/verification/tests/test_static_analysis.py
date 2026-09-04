@@ -74,6 +74,28 @@ def test_ambiguous_python_source_is_unverified(tmp_path: Path) -> None:
     assert "no claim" in cell["summary"]
 
 
+def test_unavailable_configured_source_is_unverified() -> None:
+    manifest, body = load_manifest(REPOSITORY_ROOT, MANIFEST)
+    manifest["sources"] = [
+        {
+            "surface": "python",
+            "kind": "python",
+            "path": "noxyn_solari/fixtures/sandbox-create-evolution/missing.py",
+        }
+        if item["surface"] == "python"
+        else item
+        for item in manifest["sources"]
+    ]
+    matrix = build_matrix(
+        manifest, body, snapshot_sources(REPOSITORY_ROOT, manifest)
+    )
+    cell = next(
+        item for item in matrix["rows"][0]["cells"] if item["surface"] == "python"
+    )
+    assert cell["state"] == "UNVERIFIED"
+    assert "unavailable" in cell["summary"]
+
+
 def test_phase6_executable_typescript_source_is_statically_aligned() -> None:
     manifest, body = load_manifest(REPOSITORY_ROOT, PHASE6_MANIFEST)
     matrix = build_matrix(manifest, body, snapshot_sources(REPOSITORY_ROOT, manifest))
