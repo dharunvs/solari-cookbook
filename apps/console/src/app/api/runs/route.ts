@@ -21,10 +21,13 @@ export async function POST(request: Request) {
   const body = (await request.json()) as {
     productId?: unknown;
     idempotencyKey?: unknown;
+    scenario?: unknown;
   };
   if (
     typeof body.productId !== "string" ||
-    typeof body.idempotencyKey !== "string"
+    typeof body.idempotencyKey !== "string" ||
+    (body.scenario !== "controlled_api_evolution" &&
+      body.scenario !== "current_configured_solari")
   ) {
     return NextResponse.json(
       { error: "Run request is invalid." },
@@ -35,7 +38,7 @@ export async function POST(request: Request) {
     "/v1/products/{product_id}/runs",
     {
       params: { path: { product_id: body.productId } },
-      body: { scenario: "controlled_api_evolution" },
+      body: { scenario: body.scenario },
       headers: {
         "Idempotency-Key": body.idempotencyKey,
         "X-CSRF-Token": "same-origin",

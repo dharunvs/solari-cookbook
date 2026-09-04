@@ -830,10 +830,16 @@
       "MatrixView": {
         "properties": {
           "contractDiff": {
-            "$ref": "#/components/schemas/ContractDiffView"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContractDiffView"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "fixture": {
-            "const": true,
             "title": "Fixture",
             "type": "boolean"
           },
@@ -870,7 +876,10 @@
             "type": "array"
           },
           "scenario": {
-            "const": "sandbox-create-evolution",
+            "enum": [
+              "sandbox-create-evolution",
+              "current-configured-solari"
+            ],
             "title": "Scenario",
             "type": "string"
           },
@@ -878,6 +887,13 @@
             "const": "noxyn-static-analysis-result/1.0",
             "title": "Schemaversion",
             "type": "string"
+          },
+          "sourceSnapshots": {
+            "items": {
+              "$ref": "#/components/schemas/SourceSnapshotView"
+            },
+            "title": "Sourcesnapshots",
+            "type": "array"
           },
           "summary": {
             "$ref": "#/components/schemas/MatrixSummaryView"
@@ -889,7 +905,6 @@
           "fixture",
           "parserVersion",
           "manifestSha256",
-          "contractDiff",
           "packages",
           "summary",
           "rows"
@@ -1261,8 +1276,11 @@
       "RunCreate": {
         "properties": {
           "scenario": {
-            "const": "controlled_api_evolution",
             "default": "controlled_api_evolution",
+            "enum": [
+              "controlled_api_evolution",
+              "current_configured_solari"
+            ],
             "title": "Scenario",
             "type": "string"
           }
@@ -1507,6 +1525,73 @@
           "summary"
         ],
         "title": "RuntimeCellView",
+        "type": "object"
+      },
+      "SourceSnapshotView": {
+        "properties": {
+          "identity": {
+            "title": "Identity",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "retrievedAt": {
+            "format": "date-time",
+            "title": "Retrievedat",
+            "type": "string"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "sourceRevision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcerevision"
+          },
+          "surface": {
+            "title": "Surface",
+            "type": "string"
+          },
+          "unavailableReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailablereason"
+          }
+        },
+        "required": [
+          "surface",
+          "kind",
+          "path",
+          "identity",
+          "retrievedAt"
+        ],
+        "title": "SourceSnapshotView",
         "type": "object"
       },
       "ValidationError": {

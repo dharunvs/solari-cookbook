@@ -1,0 +1,6 @@
+{
+  "registry": "npm",
+  "name": "@solarisdk/sandbox",
+  "version": "0.1.2",
+  "import": "@solarisdk/sandbox"
+}

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "noxyn-solari-contract/1.0",
+  "contractVersion": "solari-sandbox-contract/2026-09-02",
+  "capabilities": [
+    {
+      "id": "sandbox.create.memory_mb",
+      "wireName": "memMb",
+      "required": false,
+      "type": "integer",
+      "bindings": { "python": "mem_mb", "typescript": "memMb", "go": "MemMb" }
+    }
+  ]
+}

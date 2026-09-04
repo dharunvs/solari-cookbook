@@ -227,6 +227,27 @@ def test_run_is_idempotent_pollable_and_cancellable(monkeypatch: object) -> None
         assert cancelled.json()["completed_at"] is not None
 
 
+def test_current_configured_run_is_a_distinct_idempotent_mode(monkeypatch: object) -> None:
+    monkeypatch.setenv("NOXYN_E2E_AUTH_BYPASS", "true")  # type: ignore[attr-defined]
+    subject = f"e2e_{uuid4().hex}"
+    with TestClient(create_app()) as client:
+        product_id = _configured_product(client, subject)
+        current = client.post(
+            f"/v1/products/{product_id}/runs",
+            headers=_headers(subject, "current-run"),
+            json={"scenario": "current_configured_solari"},
+        )
+        fixture = client.post(
+            f"/v1/products/{product_id}/runs",
+            headers=_headers(subject, "fixture-run"),
+            json={"scenario": "controlled_api_evolution"},
+        )
+        assert current.status_code == 202
+        assert current.json()["scenario"] == "current_configured_solari"
+        assert fixture.status_code == 202
+        assert fixture.json()["scenario"] == "controlled_api_evolution"
+
+
 def test_leased_run_cancellation_waits_for_worker_cleanup(
     monkeypatch: object, tmp_path: Path
 ) -> None:

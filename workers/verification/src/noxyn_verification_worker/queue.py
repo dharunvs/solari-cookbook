@@ -40,6 +40,7 @@ class JobLease:
     id: UUID
     workspace_id: UUID
     run_id: UUID
+    scenario: str
     kind: str
     proposal_id: UUID | None
     attempt: int
@@ -65,6 +66,12 @@ class PostgresJobQueue:
             / "noxyn_solari"
             / "manifests"
             / "sandbox-create-evolution.v5.json"
+        )
+        self.current_manifest_path = (
+            self.repository_root
+            / "noxyn_solari"
+            / "manifests"
+            / "current-configured-solari.v1.json"
         )
         self.executor = executor or ReplayVerificationExecutor()
 
@@ -103,9 +110,9 @@ class PostgresJobQueue:
                 UPDATE verification_jobs AS job
                 SET state = 'LEASED', attempt = attempt + 1, lease_owner = %s,
                     lease_expires_at = now() + (%s * interval '1 second'), updated_at = now()
-                FROM candidate
-                WHERE job.id = candidate.id
-                RETURNING job.id, job.workspace_id, job.run_id, job.kind,
+                FROM candidate, verification_runs run
+                WHERE job.id = candidate.id AND run.id = job.run_id
+                RETURNING job.id, job.workspace_id, job.run_id, run.scenario, job.kind,
                           job.proposal_id, job.attempt,
                           job.lease_owner, job.lease_expires_at
                 """,
@@ -130,8 +137,9 @@ class PostgresJobQueue:
             if await self._cancel_requested(lease):
                 await self._finish_cancelled(lease)
             return
+        manifest_path = self._manifest_path_for(lease.scenario)
         manifest, manifest_body = await asyncio.to_thread(
-            load_manifest, self.repository_root, self.manifest_path
+            load_manifest, self.repository_root, manifest_path
         )
         snapshots = await asyncio.to_thread(
             snapshot_sources, self.repository_root, manifest
@@ -153,7 +161,20 @@ class PostgresJobQueue:
                 workspace_id=lease.workspace_id,
                 run_id=lease.run_id,
                 kind=f"source-{snapshot.surface.replace('_', '-')}",
-                body=snapshot.body,
+                body=(
+                    snapshot.body
+                    if snapshot.body is not None
+                    else canonical_json(
+                        {
+                            "schemaVersion": "noxyn-unavailable-source/1.0",
+                            "surface": snapshot.surface,
+                            "identity": snapshot.identity,
+                            "sourceRevision": snapshot.source_revision,
+                            "retrievedAt": snapshot.retrieved_at,
+                            "reason": snapshot.unavailable_reason,
+                        }
+                    )
+                ),
             )
             await asyncio.to_thread(store.read, reference)
             source_artifacts[snapshot.surface] = await self._record_artifact(
@@ -187,6 +208,9 @@ class PostgresJobQueue:
         await asyncio.to_thread(store.read, matrix_reference)
         await self._record_artifact(lease, matrix_reference, "CAPABILITY_MATRIX")
         await self._record_findings(lease, finding_records)
+        if manifest.get("fixture") is False:
+            await self._finish(lease, matrix_reference.id, manifest_reference.sha256)
+            return
         if not await self._begin_verification(lease):
             if await self._cancel_requested(lease):
                 await self._finish_cancelled(lease)
@@ -278,6 +302,13 @@ class PostgresJobQueue:
         if last_evidence_artifact_id is None:
             raise RuntimeError("verification produced no execution evidence")
         await self._finish(lease, last_evidence_artifact_id, manifest_reference.sha256)
+
+    def _manifest_path_for(self, scenario: str) -> Path:
+        if scenario == "controlled_api_evolution":
+            return self.manifest_path
+        if scenario == "current_configured_solari":
+            return self.current_manifest_path
+        raise ValueError("run scenario is not configured")
 
     async def _execute_fix_verification(
         self, lease: JobLease, store: LocalArtifactStore

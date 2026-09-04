@@ -13,3 +13,8 @@ code-block subject plus source-bound fix-verification replays.
 `sandbox-create-evolution.v5.json` adds the aligned Go runtime subject under
 the same executor contract, with a deterministic replay fixture. The worker
 uses v5 by default.
+
+`current-configured-solari.v1.json` is the separately labelled current-mode
+manifest. Its reviewed source identities and exact revisions are snapshot at
+run time; it contains no execution plan, so development and CI remain
+independent of live Solari execution.

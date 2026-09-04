@@ -49,7 +49,9 @@ TERMINAL_STATES = {"COMPLETED", "FAILED", "CANCELLED"}
 
 
 class RunCreate(BaseModel):
-    scenario: Literal["controlled_api_evolution"] = "controlled_api_evolution"
+    scenario: Literal["controlled_api_evolution", "current_configured_solari"] = (
+        "controlled_api_evolution"
+    )
 
 
 class ArtifactView(BaseModel):
@@ -147,6 +149,17 @@ class ContractDiffView(AnalysisModel):
     classification: Literal["RENAMED"]
 
 
+class SourceSnapshotView(AnalysisModel):
+    surface: str
+    kind: str
+    path: str
+    sha256: str | None = None
+    identity: str
+    source_revision: str | None = None
+    retrieved_at: datetime
+    unavailable_reason: str | None = None
+
+
 class PackageIdentityView(AnalysisModel):
     name: str
     version: str
@@ -155,12 +168,13 @@ class PackageIdentityView(AnalysisModel):
 
 class MatrixView(AnalysisModel):
     schema_version: Literal["noxyn-static-analysis-result/1.0"]
-    scenario: Literal["sandbox-create-evolution"]
-    fixture: Literal[True]
+    scenario: Literal["sandbox-create-evolution", "current-configured-solari"]
+    fixture: bool
     parser_version: str
     manifest_sha256: str
-    contract_diff: ContractDiffView
+    contract_diff: ContractDiffView | None = None
     packages: dict[str, PackageIdentityView]
+    source_snapshots: list[SourceSnapshotView] = Field(default_factory=list)
     summary: MatrixSummaryView
     rows: list[MatrixRowView]
     parity: ParityView | None = None

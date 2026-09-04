@@ -1,0 +1,6 @@
+{
+  "registry": "pypi",
+  "name": "solari-sandbox",
+  "version": "0.2.0",
+  "import": "solari_sandbox"
+}

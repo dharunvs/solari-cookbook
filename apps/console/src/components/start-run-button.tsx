@@ -5,6 +5,8 @@ import { useRef, useState } from "react";
 
 import type { Run } from "@/components/run-status";
 
+type Scenario = "controlled_api_evolution" | "current_configured_solari";
+
 export function StartRunButton({
   productId,
   runPath,
@@ -16,6 +18,9 @@ export function StartRunButton({
   const key = useRef(crypto.randomUUID());
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scenario, setScenario] = useState<Scenario>(
+    "controlled_api_evolution",
+  );
 
   async function start() {
     setPending(true);
@@ -24,7 +29,11 @@ export function StartRunButton({
       const response = await fetch("/api/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId, idempotencyKey: key.current }),
+        body: JSON.stringify({
+          productId,
+          idempotencyKey: key.current,
+          scenario,
+        }),
       });
       const data = (await response.json()) as Run & { error?: string };
       if (!response.ok || !data.id)
@@ -40,6 +49,32 @@ export function StartRunButton({
 
   return (
     <div>
+      <fieldset className="mb-4 space-y-2" disabled={pending}>
+        <legend className="text-sm font-medium">Run mode</legend>
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-body">
+          <input
+            checked={scenario === "controlled_api_evolution"}
+            name="scenario"
+            onChange={() => setScenario("controlled_api_evolution")}
+            type="radio"
+            value="controlled_api_evolution"
+          />
+          <span>
+            Controlled API evolution{" "}
+            <span className="font-mono text-xs">FIXTURE</span>
+          </span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-body">
+          <input
+            checked={scenario === "current_configured_solari"}
+            name="scenario"
+            onChange={() => setScenario("current_configured_solari")}
+            type="radio"
+            value="current_configured_solari"
+          />
+          <span>Current configured Solari ecosystem</span>
+        </label>
+      </fieldset>
       <button
         className="rounded-md bg-ink px-4 py-2.5 text-sm font-medium text-white disabled:cursor-wait disabled:opacity-60"
         disabled={pending}

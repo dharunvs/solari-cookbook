@@ -10,7 +10,9 @@ from noxyn_verification_worker.config import DEFAULT_DATABASE_URL
 from noxyn_verification_worker.queue import PostgresJobQueue
 
 
-def _job_fixture() -> tuple[UUID, UUID]:
+def _job_fixture(
+    scenario: str = "controlled_api_evolution",
+) -> tuple[UUID, UUID]:
     workspace_id, project_id, product_id = uuid4(), uuid4(), uuid4()
     configuration_id, run_id, job_id = uuid4(), uuid4(), uuid4()
     with psycopg.connect(DEFAULT_DATABASE_URL) as connection:
@@ -37,9 +39,9 @@ def _job_fixture() -> tuple[UUID, UUID]:
             """
             INSERT INTO verification_runs
                 (id, workspace_id, product_id, configuration_id, scenario, state)
-            VALUES (%s, %s, %s, %s, 'controlled_api_evolution', 'QUEUED')
+            VALUES (%s, %s, %s, %s, %s, 'QUEUED')
             """,
-            (run_id, workspace_id, product_id, configuration_id),
+            (run_id, workspace_id, product_id, configuration_id, scenario),
         )
         connection.execute(
             """
@@ -146,3 +148,39 @@ def test_claim_is_exclusive_and_expired_lease_recovers(tmp_path: Path) -> None:
             "c44f01192490598f36ecc593b38d53d7194afc74288f0017850dbba5823d1e88",
         ),
     ]
+
+
+@pytest.mark.integration
+def test_current_mode_completes_static_analysis_without_runtime_execution(
+    tmp_path: Path,
+) -> None:
+    run_id, job_id = _job_fixture("current_configured_solari")
+    queue = PostgresJobQueue(DEFAULT_DATABASE_URL, lease_seconds=30)
+
+    async def execute_current() -> None:
+        for _ in range(20):
+            lease = await queue.claim("current-source-worker")
+            assert lease is not None
+            if lease.id == job_id:
+                assert lease.scenario == "current_configured_solari"
+                await queue.execute(lease, LocalArtifactStore(tmp_path))
+                return
+            await queue.execute(lease, LocalArtifactStore(tmp_path))
+        raise AssertionError("current run was not claimed")
+
+    asyncio.run(execute_current())
+    with psycopg.connect(DEFAULT_DATABASE_URL) as connection:
+        run = connection.execute(
+            "SELECT state, manifest_sha256 FROM verification_runs WHERE id = %s",
+            (run_id,),
+        ).fetchone()
+        execution_count = connection.execute(
+            "SELECT count(*) FROM execution_attempts WHERE run_id = %s", (run_id,)
+        ).fetchone()
+        finding_count = connection.execute(
+            "SELECT count(*) FROM findings WHERE run_id = %s", (run_id,)
+        ).fetchone()
+    assert run[0] == "COMPLETED"
+    assert len(run[1]) == 64
+    assert execution_count == (0,)
+    assert finding_count == (0,)

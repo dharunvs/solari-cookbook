@@ -1,0 +1,7 @@
+{
+  "registry": "go",
+  "name": "github.com/solari-sdk/solari-sandbox-go",
+  "version": "v0.1.2",
+  "commit": "15ae65c3177f4eeb270e000f5065787abe581e0f",
+  "import": "solari"
+}

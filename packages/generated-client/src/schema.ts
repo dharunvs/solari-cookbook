@@ -691,12 +691,9 @@ export interface components {
     };
     /** MatrixView */
     MatrixView: {
-      contractDiff: components["schemas"]["ContractDiffView"];
-      /**
-       * Fixture
-       * @constant
-       */
-      fixture: true;
+      contractDiff?: components["schemas"]["ContractDiffView"] | null;
+      /** Fixture */
+      fixture: boolean;
       /** Manifestsha256 */
       manifestSha256: string;
       /** Packages */
@@ -710,14 +707,16 @@ export interface components {
       rows: components["schemas"]["MatrixRowView"][];
       /**
        * Scenario
-       * @constant
+       * @enum {string}
        */
-      scenario: "sandbox-create-evolution";
+      scenario: "sandbox-create-evolution" | "current-configured-solari";
       /**
        * Schemaversion
        * @constant
        */
       schemaVersion: "noxyn-static-analysis-result/1.0";
+      /** Sourcesnapshots */
+      sourceSnapshots?: components["schemas"]["SourceSnapshotView"][];
       summary: components["schemas"]["MatrixSummaryView"];
     };
     /** MeResponse */
@@ -877,9 +876,9 @@ export interface components {
       /**
        * Scenario
        * @default controlled_api_evolution
-       * @constant
+       * @enum {string}
        */
-      scenario: "controlled_api_evolution";
+      scenario: "controlled_api_evolution" | "current_configured_solari";
     };
     /** RunList */
     RunList: {
@@ -969,6 +968,28 @@ export interface components {
       subjectState?: ("PASS" | "FAIL" | "NOT_RUN") | null;
       /** Summary */
       summary: string;
+    };
+    /** SourceSnapshotView */
+    SourceSnapshotView: {
+      /** Identity */
+      identity: string;
+      /** Kind */
+      kind: string;
+      /** Path */
+      path: string;
+      /**
+       * Retrievedat
+       * Format: date-time
+       */
+      retrievedAt: string;
+      /** Sha256 */
+      sha256?: string | null;
+      /** Sourcerevision */
+      sourceRevision?: string | null;
+      /** Surface */
+      surface: string;
+      /** Unavailablereason */
+      unavailableReason?: string | null;
     };
     /** ValidationError */
     ValidationError: {

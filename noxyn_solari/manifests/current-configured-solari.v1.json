@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "noxyn-solari-manifest/1.0",
+  "scenario": "current-configured-solari",
+  "fixture": false,
+  "project": "solari",
+  "product": "sandbox",
+  "contract": {
+    "surface": "contract",
+    "kind": "contract",
+    "path": "noxyn_solari/current_sources/contract.json",
+    "identity": "configured-solari-sandbox-contract",
+    "sourceRevision": "solari-sandbox-contract/2026-09-02"
+  },
+  "packages": {
+    "python": {
+      "name": "solari-sandbox",
+      "version": "0.2.0",
+      "import": "solari_sandbox",
+      "sourceRevision": "0.2.0"
+    },
+    "typescript": {
+      "name": "@solarisdk/sandbox",
+      "version": "0.1.2",
+      "import": "@solarisdk/sandbox",
+      "sourceRevision": "0.1.2"
+    },
+    "typescriptExample": {
+      "name": "@solarisdk/sdk",
+      "version": "0.1.2",
+      "import": "@solarisdk/sdk",
+      "sourceRevision": "0.1.2"
+    },
+    "go": {
+      "name": "github.com/solari-sdk/solari-sandbox-go",
+      "version": "v0.1.2",
+      "import": "solari",
+      "sourceRevision": "15ae65c3177f4eeb270e000f5065787abe581e0f"
+    }
+  },
+  "sources": [
+    {
+      "surface": "python",
+      "kind": "python",
+      "path": "noxyn_solari/current_sources/cookbook/python/main.py",
+      "identity": "github.com/solari-sdk/solari-cookbook/python",
+      "sourceRevision": "d6f9c6380b36a05984871f335a2d8e97384a676d"
+    },
+    {
+      "surface": "typescript",
+      "kind": "typescript",
+      "path": "noxyn_solari/current_sources/cookbook/typescript/main.mjs",
+      "identity": "github.com/solari-sdk/solari-cookbook/typescript",
+      "sourceRevision": "d6f9c6380b36a05984871f335a2d8e97384a676d"
+    },
+    {
+      "surface": "go",
+      "kind": "go",
+      "path": "noxyn_solari/current_sources/cookbook/go/main.go",
+      "identity": "github.com/solari-sdk/solari-cookbook/go",
+      "sourceRevision": "d6f9c6380b36a05984871f335a2d8e97384a676d"
+    },
+    {
+      "surface": "docs_python",
+      "kind": "markdown_python",
+      "path": "noxyn_solari/current_sources/docs/python.md",
+      "identity": "configured-solari-official-docs/python",
+      "sourceRevision": "solari-docs/2026-09-02"
+    },
+    {
+      "surface": "docs_typescript",
+      "kind": "markdown_typescript",
+      "path": "noxyn_solari/current_sources/docs/typescript.md",
+      "identity": "configured-solari-official-docs/typescript",
+      "sourceRevision": "solari-docs/2026-09-02"
+    },
+    {
+      "surface": "package_python",
+      "kind": "package_metadata",
+      "path": "noxyn_solari/current_sources/packages/python.json",
+      "identity": "pypi:solari-sandbox@0.2.0",
+      "sourceRevision": "0.2.0"
+    },
+    {
+      "surface": "package_typescript",
+      "kind": "package_metadata",
+      "path": "noxyn_solari/current_sources/packages/typescript.json",
+      "identity": "npm:@solarisdk/sandbox@0.1.2",
+      "sourceRevision": "0.1.2"
+    },
+    {
+      "surface": "package_go",
+      "kind": "package_metadata",
+      "path": "noxyn_solari/current_sources/packages/go.json",
+      "identity": "gomod:github.com/solari-sdk/solari-sandbox-go@v0.1.2",
+      "sourceRevision": "15ae65c3177f4eeb270e000f5065787abe581e0f"
+    }
+  ]
+}

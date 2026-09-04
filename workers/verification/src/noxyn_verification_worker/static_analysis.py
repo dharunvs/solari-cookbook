@@ -1,8 +1,9 @@
-"""Deterministic analysis for the controlled Sandbox API-evolution fixture."""
+"""Deterministic configured-source analysis for Solari Sandbox."""
 
 from __future__ import annotations
 
 import ast
+from datetime import UTC, datetime
 import hashlib
 import json
 import re
@@ -33,8 +34,12 @@ class SourceSnapshot:
     surface: str
     kind: str
     path: str
-    body: bytes
-    sha256: str
+    body: bytes | None
+    sha256: str | None
+    identity: str = ""
+    source_revision: str | None = None
+    retrieved_at: str = ""
+    unavailable_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,28 +62,50 @@ def load_manifest(
     manifest = json.loads(body)
     if manifest.get("schemaVersion") != "noxyn-solari-manifest/1.0":
         raise ValueError("unsupported manifest schema")
-    if manifest.get("scenario") != "sandbox-create-evolution" or not manifest.get(
-        "fixture"
-    ):
-        raise ValueError("worker accepts only the controlled fixture manifest")
-    return manifest, body
+    scenario = manifest.get("scenario")
+    fixture = manifest.get("fixture")
+    if scenario == "sandbox-create-evolution" and fixture is True:
+        return manifest, body
+    if scenario == "current-configured-solari" and fixture is False:
+        return manifest, body
+    raise ValueError("manifest is not a reviewed Solari run mode")
 
 
 def snapshot_sources(
     repository_root: Path, manifest: dict[str, Any]
 ) -> tuple[SourceSnapshot, ...]:
     snapshots: list[SourceSnapshot] = []
-    paths: list[tuple[str, str, str]] = [
-        ("contract_before", "contract", manifest["contracts"]["before"]),
-        ("contract_after", "contract", manifest["contracts"]["after"]),
-    ]
-    paths.extend(
-        (item["surface"], item["kind"], item["path"]) for item in manifest["sources"]
-    )
-    for surface, kind, relative in paths:
-        path = _safe_source_path(repository_root, relative)
-        body = path.read_bytes()
-        snapshots.append(SourceSnapshot(surface, kind, relative, body, sha256(body)))
+    paths: list[dict[str, Any]] = []
+    if manifest.get("fixture") is True:
+        paths.extend(
+            [
+                {"surface": "contract_before", "kind": "contract", "path": manifest["contracts"]["before"]},
+                {"surface": "contract_after", "kind": "contract", "path": manifest["contracts"]["after"]},
+            ]
+        )
+    else:
+        paths.append(dict(manifest["contract"]))
+    paths.extend(dict(item) for item in manifest["sources"])
+    retrieved_at = datetime.now(UTC).isoformat()
+    for item in paths:
+        surface, kind, relative = item["surface"], item["kind"], item["path"]
+        identity = str(item.get("identity", relative))
+        source_revision = item.get("sourceRevision")
+        try:
+            path = _safe_source_path(repository_root, relative)
+            body = path.read_bytes()
+            snapshots.append(
+                SourceSnapshot(surface, kind, relative, body, sha256(body), identity,
+                    str(source_revision) if source_revision is not None else None, retrieved_at)
+            )
+        except (OSError, ValueError) as error:
+            if item.get("required", True) is False:
+                continue
+            snapshots.append(
+                SourceSnapshot(surface, kind, relative, None, None, identity,
+                    str(source_revision) if source_revision is not None else None,
+                    retrieved_at, str(error))
+            )
     return tuple(snapshots)
 
 
@@ -88,49 +115,56 @@ def build_matrix(
     snapshots: tuple[SourceSnapshot, ...],
 ) -> dict[str, Any]:
     by_surface = {item.surface: item for item in snapshots}
-    before = json.loads(by_surface["contract_before"].body)
-    after = json.loads(by_surface["contract_after"].body)
-    before_capability = _capability(before, CANONICAL_CAPABILITY)
-    after_capability = _capability(after, CANONICAL_CAPABILITY)
-    if not after_capability.get("bindings"):
-        raise ValueError("after-contract has no reviewed language bindings")
+    fixture = manifest.get("fixture") is True
+    after_source = by_surface.get("contract_after" if fixture else "contract")
+    before_source = by_surface.get("contract_before") if fixture else None
+    after_capability = _snapshot_capability(after_source)
+    before_capability = _snapshot_capability(before_source, require_bindings=False)
 
     cells: list[dict[str, Any]] = []
-    contract_state: StaticState = (
-        "ALIGNED"
-        if before_capability["wireName"] == "memory"
-        and after_capability["wireName"] == "memMb"
-        else "UNVERIFIED"
-    )
+    contract_state: StaticState = "UNVERIFIED"
+    if fixture and before_capability and after_capability:
+        contract_state = (
+            "ALIGNED"
+            if before_capability["wireName"] == "memory"
+            and after_capability["wireName"] == "memMb"
+            else "UNVERIFIED"
+        )
+    elif not fixture and after_capability:
+        contract_state = "ALIGNED"
     cells.append(
         _cell(
             "contract",
             contract_state,
-            after_capability["wireName"],
-            before_capability["wireName"],
-            by_surface["contract_after"],
+            after_capability["wireName"] if after_capability else "unknown",
+            before_capability["wireName"] if before_capability else None,
+            after_source,
             "$.capabilities[0].wireName",
             '"wireName": "memMb"',
-            "Reviewed fixture contract changes the wire field from memory to memMb."
+            (
+                "Reviewed fixture contract changes the wire field from memory to memMb."
+                if fixture
+                else "Configured current contract normalized with reviewed bindings."
+            )
             if contract_state == "ALIGNED"
-            else "The controlled contract evolution could not be normalized.",
+            else "The configured contract source is unavailable or could not be normalized.",
         )
     )
 
     extractors = {
-        "python": (_extract_python, after_capability["bindings"]["python"]),
+        "python": (_extract_python, _binding(after_capability, "python")),
         "typescript": (
             _extract_typescript,
-            after_capability["bindings"]["typescript"],
+            _binding(after_capability, "typescript"),
         ),
-        "go": (_extract_go, after_capability["bindings"]["go"]),
+        "go": (_extract_go, _binding(after_capability, "go")),
         "docs_python": (
             lambda body, expected: _extract_markdown(body, "python", expected),
-            after_capability["bindings"]["python"],
+            _binding(after_capability, "python"),
         ),
         "docs_typescript": (
             lambda body, expected: _extract_markdown(body, "typescript", expected),
-            after_capability["bindings"]["typescript"],
+            _binding(after_capability, "typescript"),
         ),
     }
     for surface, (extractor, expected) in extractors.items():
@@ -149,6 +183,34 @@ def build_matrix(
                 )
             )
             continue
+        if source.body is None:
+            cells.append(
+                _cell(
+                    surface,
+                    "UNVERIFIED",
+                    expected,
+                    None,
+                    source,
+                    None,
+                    None,
+                    "The required configured source could not be snapshotted.",
+                )
+            )
+            continue
+        if after_capability is None:
+            cells.append(
+                _cell(
+                    surface,
+                    "UNVERIFIED",
+                    expected,
+                    None,
+                    source,
+                    None,
+                    None,
+                    "The configured contract could not be normalized.",
+                )
+            )
+            continue
         observation = extractor(source.body.decode("utf-8"), expected)
         cells.append(
             _cell(
@@ -163,6 +225,23 @@ def build_matrix(
             )
         )
 
+    configured_cell_surfaces = {"contract", *extractors}
+    for source in snapshots:
+        if source.surface in configured_cell_surfaces or source.body is not None:
+            continue
+        cells.append(
+            _cell(
+                source.surface,
+                "UNVERIFIED",
+                source.identity,
+                None,
+                source,
+                None,
+                None,
+                "The required configured source could not be snapshotted.",
+            )
+        )
+
     states = [cell["state"] for cell in cells]
     summary = {
         "capabilities": 1,
@@ -174,16 +253,21 @@ def build_matrix(
     return {
         "schemaVersion": "noxyn-static-analysis-result/1.0",
         "scenario": manifest["scenario"],
-        "fixture": True,
+        "fixture": fixture,
         "parserVersion": PARSER_VERSION,
         "manifestSha256": sha256(manifest_body),
-        "contractDiff": {
-            "capabilityId": CANONICAL_CAPABILITY,
-            "before": before_capability["wireName"],
-            "after": after_capability["wireName"],
-            "classification": "RENAMED",
-        },
+        "contractDiff": (
+            {
+                "capabilityId": CANONICAL_CAPABILITY,
+                "before": before_capability["wireName"],
+                "after": after_capability["wireName"],
+                "classification": "RENAMED",
+            }
+            if fixture and before_capability and after_capability
+            else None
+        ),
         "packages": manifest["packages"],
+        "sourceSnapshots": [_source_metadata(snapshot) for snapshot in snapshots],
         "summary": summary,
         "rows": [
             {
@@ -196,6 +280,37 @@ def build_matrix(
                 },
             }
         ],
+    }
+
+
+def _snapshot_capability(
+    source: SourceSnapshot | None, *, require_bindings: bool = True
+) -> dict[str, Any] | None:
+    if source is None or source.body is None:
+        return None
+    try:
+        capability = _capability(json.loads(source.body), CANONICAL_CAPABILITY)
+    except (KeyError, ValueError, json.JSONDecodeError):
+        return None
+    return capability if not require_bindings or capability.get("bindings") else None
+
+
+def _binding(capability: dict[str, Any] | None, language: str) -> str:
+    if capability is None:
+        return "unknown"
+    return str(capability["bindings"][language])
+
+
+def _source_metadata(source: SourceSnapshot) -> dict[str, Any]:
+    return {
+        "surface": source.surface,
+        "kind": source.kind,
+        "path": source.path,
+        "sha256": source.sha256,
+        "identity": source.identity,
+        "sourceRevision": source.source_revision,
+        "retrievedAt": source.retrieved_at,
+        "unavailableReason": source.unavailable_reason,
     }
 
 
@@ -249,7 +364,12 @@ def _cell(
     summary: str,
 ) -> dict[str, Any]:
     evidence = None
-    if source is not None and locator is not None and excerpt is not None:
+    if (
+        source is not None
+        and source.sha256 is not None
+        and locator is not None
+        and excerpt is not None
+    ):
         evidence = {
             "path": source.path,
             "sha256": source.sha256,

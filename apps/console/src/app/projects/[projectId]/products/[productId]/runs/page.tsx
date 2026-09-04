@@ -47,11 +47,11 @@ export default async function RunsPage({
           <div>
             <p className="font-mono text-xs text-body">VERIFICATION RUNS</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-[-0.045em] text-balance">
-              Verify the controlled evolution.
+              Verify configured Solari sources.
             </h1>
             <p className="mt-3 max-w-2xl text-body">
-              Compare reviewed fixture sources, then reproduce the Python
-              mismatch with bounded, immutable runtime evidence.
+              Select either the controlled fixture or the reviewed current
+              source set. Both preserve immutable source evidence.
             </p>
           </div>
           <StartRunButton productId={productId} runPath={runPath} />
@@ -70,7 +70,9 @@ export default async function RunsPage({
                   >
                     <div>
                       <p className="text-sm font-medium">
-                        Controlled API evolution
+                        {run.scenario === "controlled_api_evolution"
+                          ? "Controlled API evolution · Fixture"
+                          : "Current configured Solari ecosystem"}
                       </p>
                       <p className="mt-1 font-mono text-xs text-body">
                         {run.id.slice(0, 8)} · config v
