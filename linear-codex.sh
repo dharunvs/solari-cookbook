@@ -20,14 +20,17 @@ set -euo pipefail
 #   CODEX_MODEL          Optional model override
 #   CODEX_EXTRA_ARGS     Optional extra args passed to `codex exec`
 #   CHECK_CMD            Optional validation command used by `finish`
+#   BASE_BRANCH          Default: noxyn
+#   PUSH_AFTER_FINISH    ask | yes | no. Default: ask
 #
 # Notes:
 # - Your ChatGPT Linear connector is separate from this local script.
 #   The shell script needs a normal Linear personal API key.
 # - `start` creates/reuses one worktree per Linear issue.
 # - `start` launches a fresh non-interactive Codex run with `codex exec`.
-# - `finish` never pushes.
-# - `finish` asks before committing and before marking the issue Done.
+# - `finish` commits in the issue worktree, integrates into BASE_BRANCH,
+#   optionally pushes, then updates Linear.
+# - Linear is marked Done only after integration succeeds.
 
 LINEAR_API_URL="${LINEAR_API_URL:-https://api.linear.app/graphql}"
 LINEAR_PROJECT="${LINEAR_PROJECT:-noxyn-solari}"
@@ -35,6 +38,8 @@ LINEAR_TEAM_KEY="${LINEAR_TEAM_KEY:-DHA}"
 CODEX_EXTRA_ARGS="${CODEX_EXTRA_ARGS:-}"
 CODEX_MODEL="${CODEX_MODEL:-gpt-5.6-terra}"
 CODEX_MODEL_REASONING="${CODEX_MODEL_REASONING:-medium}"
+BASE_BRANCH="${BASE_BRANCH:-noxyn}"
+PUSH_AFTER_FINISH="${PUSH_AFTER_FINISH:-ask}"
 
 die() {
   echo "error: $*" >&2
@@ -478,21 +483,104 @@ add_linear_comment() {
       '{issueId:$issueId,body:$body}')"
 }
 
+
+confirm() {
+  local prompt="$1"
+  local answer
+  read -r -p "$prompt [y/N] " answer
+  [[ "$answer" =~ ^[Yy]$ ]]
+}
+
+main_worktree_for_branch() {
+  local branch="$1"
+  git worktree list --porcelain |
+    awk -v target="refs/heads/$branch" '
+      /^worktree / { path = substr($0, 10) }
+      /^branch / && $0 == "branch " target { print path; exit }
+    '
+}
+
+ensure_base_checkout() {
+  local invocation_root="$1"
+  local checkout
+  checkout="$(main_worktree_for_branch "$BASE_BRANCH")"
+
+  if [[ -n "$checkout" ]]; then
+    printf '%s\n' "$checkout"
+    return
+  fi
+
+  [[ -z "$(git -C "$invocation_root" status --porcelain)" ]] ||
+    die "main checkout has uncommitted changes: $invocation_root"
+
+  git -C "$invocation_root" switch "$BASE_BRANCH" >/dev/null
+  printf '%s\n' "$invocation_root"
+}
+
+integrate_commit() {
+  local invocation_root="$1"
+  local commit="$2"
+  local checkout
+  checkout="$(ensure_base_checkout "$invocation_root")"
+
+  [[ -z "$(git -C "$checkout" status --porcelain)" ]] ||
+    die "base checkout is not clean: $checkout"
+
+  [[ "$(git -C "$checkout" branch --show-current)" == "$BASE_BRANCH" ]] ||
+    die "base checkout is not on $BASE_BRANCH"
+
+  if git -C "$checkout" merge-base --is-ancestor "$commit" HEAD >/dev/null 2>&1; then
+    echo "Commit $commit is already contained in $BASE_BRANCH."
+    return 0
+  fi
+
+  echo "Cherry-picking $commit into $BASE_BRANCH..."
+  if ! git -C "$checkout" cherry-pick "$commit"; then
+    echo "Cherry-pick failed. Resolve or abort it in: $checkout" >&2
+    echo "Abort with: git -C \"$checkout\" cherry-pick --abort" >&2
+    return 1
+  fi
+}
+
+maybe_push_base() {
+  local invocation_root="$1"
+  local checkout
+  checkout="$(ensure_base_checkout "$invocation_root")"
+
+  case "$PUSH_AFTER_FINISH" in
+    yes|true|1)
+      git -C "$checkout" push origin "$BASE_BRANCH"
+      ;;
+    no|false|0)
+      echo "Push skipped."
+      ;;
+    ask|"")
+      if confirm "Push $BASE_BRANCH to origin now?"; then
+        git -C "$checkout" push origin "$BASE_BRANCH"
+      else
+        echo "Push skipped."
+      fi
+      ;;
+    *)
+      die "PUSH_AFTER_FINISH must be ask, yes, or no"
+      ;;
+  esac
+}
+
 cmd_finish() {
   local issue="${1:-}"
   [[ -n "$issue" ]] || die "usage: $0 finish DHA-15"
 
+  local invocation_root
+  invocation_root="$(repo_root)"
+
   local issue_json
   issue_json="$(fetch_issue "$issue")"
 
-  local identifier
-  local title
-  local issue_uuid
-
+  local identifier title issue_uuid
   identifier="$(jq -r '.issue.identifier // empty' <<<"$issue_json")"
   title="$(jq -r '.issue.title // empty' <<<"$issue_json")"
   issue_uuid="$(jq -r '.issue.id // empty' <<<"$issue_json")"
-
   [[ -n "$identifier" ]] || die "issue not found: $issue"
 
   local worktree
@@ -503,74 +591,98 @@ cmd_finish() {
   cd "$worktree"
 
   echo "=== $identifier — $title ==="
+  echo "Issue worktree: $worktree"
+  echo "Issue branch:   $(git branch --show-current)"
+  echo "Base branch:    $BASE_BRANCH"
   echo
 
-  echo "=== git status ==="
   git status --short
   echo
 
-  echo "=== diff stat ==="
-  git diff --stat
-  echo
-
-  echo "=== changed files ==="
-  git diff --name-only
-  echo
-
-  if [[ -z "$(git status --porcelain)" ]]; then
-    die "working tree is clean; there is nothing to finish"
-  fi
-
-  if [[ -n "${CHECK_CMD:-}" ]]; then
-    echo "=== running CHECK_CMD ==="
-    echo "$CHECK_CMD"
-    bash -lc "$CHECK_CMD"
-    echo
-  else
-    echo "CHECK_CMD is not set; no automatic test command will be guessed."
-    echo
-  fi
-
-  read -r -p "Review the diff now. Commit this issue? [y/N] " answer
-  [[ "$answer" =~ ^[Yy]$ ]] || {
-    echo "Stopped before commit."
-    exit 0
-  }
-
-  git add -A
-
-  echo
-  echo "=== staged diff stat ==="
-  git diff --cached --stat
-  echo
-
-  echo "=== staged files ==="
-  git diff --cached --name-only
-  echo
-
-  read -r -p "Staged diff looks correct? [y/N] " answer
-  [[ "$answer" =~ ^[Yy]$ ]] || {
-    git reset
-    echo "Unstaged everything; no commit created."
-    exit 0
-  }
-
-  local commit_message
-  commit_message="feat: ${title}"
-
-  git commit -m "$commit_message"
-
   local commit_hash
-  local summary
-  local comment
 
-  commit_hash="$(git rev-parse --short HEAD)"
-  summary="$(git show --stat --oneline --format='%h %s' HEAD)"
+  if [[ -n "$(git status --porcelain)" ]]; then
+    echo "=== diff stat ==="
+    git diff --stat
+    echo
+    echo "=== changed files ==="
+    git diff --name-only
+    echo
+
+    if [[ -n "${CHECK_CMD:-}" ]]; then
+      echo "=== running CHECK_CMD ==="
+      echo "$CHECK_CMD"
+      bash -lc "$CHECK_CMD"
+      echo
+    else
+      echo "CHECK_CMD is not set; no automatic test command will be guessed."
+      echo
+    fi
+
+    confirm "Review the diff now. Commit this issue?" || {
+      echo "Stopped before commit."
+      exit 0
+    }
+
+    git add -A
+
+    echo
+    echo "=== staged diff stat ==="
+    git diff --cached --stat
+    echo
+    echo "=== staged files ==="
+    git diff --cached --name-only
+    echo
+
+    confirm "Staged diff looks correct?" || {
+      git reset
+      echo "Unstaged everything; no commit created."
+      exit 0
+    }
+
+    git commit -m "feat: ${title}"
+    commit_hash="$(git rev-parse --short HEAD)"
+  else
+    commit_hash="$(git rev-parse --short HEAD)"
+    echo "Issue worktree is clean."
+    echo "Using existing issue-branch HEAD: $commit_hash"
+    echo
+  fi
+
+  confirm "Integrate $identifier commit $commit_hash into $BASE_BRANCH?" || {
+    echo "Commit remains only on the issue branch."
+    echo "Linear will not be marked Done."
+    exit 0
+  }
+
+  integrate_commit "$invocation_root" "$commit_hash"
+
+  local base_checkout integrated_hash
+  base_checkout="$(ensure_base_checkout "$invocation_root")"
+  integrated_hash="$(git -C "$base_checkout" rev-parse --short HEAD)"
+
+  echo
+  echo "Integrated into $BASE_BRANCH as $integrated_hash"
+  git -C "$base_checkout" show --stat --oneline --format='%h %s' HEAD
+  echo
+
+  maybe_push_base "$invocation_root"
+
+  local push_note
+  if git -C "$base_checkout" status -sb | grep -q '\[ahead '; then
+    push_note="$BASE_BRANCH is ahead of its upstream; not pushed yet."
+  else
+    push_note="$BASE_BRANCH is not ahead of its upstream."
+  fi
+
+  local summary comment
+  summary="$(git show --stat --oneline --format='%h %s' "$commit_hash")"
 
   comment="$(cat <<EOF
 Implemented ${identifier}.
 
-Commit: \`${commit_hash}\`
+Issue-branch commit: \`${commit_hash}\`
+Integrated into \`${BASE_BRANCH}\` as: \`${integrated_hash}\`
 
 \`\`\`
 ${summary}
@@ -579,16 +691,16 @@ ${summary}
 Local validation:
 ${CHECK_CMD:-No CHECK_CMD was configured; review/test results should be added manually if needed.}
 
-No push was performed by the workflow script.
+Integration:
+- issue commit integrated into \`${BASE_BRANCH}\`
+- ${push_note}
 EOF
 )"
 
   add_linear_comment "$issue_uuid" "$comment" >/dev/null
   echo "Added completion comment to Linear."
 
-  read -r -p "Mark $identifier Done in Linear? [y/N] " answer
-
-  if [[ "$answer" =~ ^[Yy]$ ]]; then
+  if confirm "Mark $identifier Done in Linear?"; then
     local done_state
     done_state="$(linear_done_state_id "$LINEAR_TEAM_KEY")"
     [[ -n "$done_state" ]] ||
@@ -601,11 +713,14 @@ EOF
   fi
 
   echo
-  echo "=== final status ==="
-  git status --short
+  echo "=== final issue worktree status ==="
+  git -C "$worktree" status --short
   echo
-  echo "Commit: $commit_hash"
-  echo "No push performed."
+  echo "=== final $BASE_BRANCH status ==="
+  git -C "$base_checkout" status -sb
+  echo
+  echo "Issue commit:      $commit_hash"
+  echo "Integrated commit: $integrated_hash"
 }
 
 usage() {
@@ -622,6 +737,8 @@ Environment:
   CODEX_MODEL          optional
   CODEX_EXTRA_ARGS     optional
   CHECK_CMD            optional validation command used by finish
+  BASE_BRANCH          default: noxyn
+  PUSH_AFTER_FINISH    ask | yes | no (default: ask)
 
 Examples:
   export LINEAR_API_KEY='lin_api_...'
