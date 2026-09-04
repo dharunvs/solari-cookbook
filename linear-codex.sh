@@ -3,10 +3,12 @@ set -euo pipefail
 
 # linear-codex.sh
 #
-# Minimal one-file workflow helper:
-#   ./scripts/linear-codex.sh next
-#   ./scripts/linear-codex.sh start DHA-14
-#   ./scripts/linear-codex.sh finish DHA-14
+# Minimal one-file workflow helper for Linear -> Codex -> review -> Linear.
+#
+# Commands:
+#   ./linear-codex.sh next
+#   ./linear-codex.sh start DHA-15
+#   ./linear-codex.sh finish DHA-15
 #
 # Requirements:
 #   curl, jq, git, codex
@@ -15,21 +17,24 @@ set -euo pipefail
 #   LINEAR_API_KEY       Required for Linear reads/writes
 #   LINEAR_PROJECT       Default: noxyn-solari
 #   LINEAR_TEAM_KEY      Default: DHA
-#   CODEX_MODEL          Optional. Example: "gpt-5.6-codex"
-#   CODEX_EXTRA_ARGS     Optional extra CLI args passed to codex
-#   CHECK_CMD            Optional command run during `finish`
+#   CODEX_MODEL          Optional model override
+#   CODEX_EXTRA_ARGS     Optional extra args passed to `codex exec`
+#   CHECK_CMD            Optional validation command used by `finish`
 #
 # Notes:
-# - This script uses Linear's GraphQL API directly. Your ChatGPT Linear
-#   connection is separate; it does not automatically give shell scripts access.
+# - Your ChatGPT Linear connector is separate from this local script.
+#   The shell script needs a normal Linear personal API key.
+# - `start` creates/reuses one worktree per Linear issue.
+# - `start` launches a fresh non-interactive Codex run with `codex exec`.
 # - `finish` never pushes.
-# - `finish` asks before committing and before marking the Linear issue Done.
-# - One issue = one worktree = one fresh Codex session.
+# - `finish` asks before committing and before marking the issue Done.
 
 LINEAR_API_URL="${LINEAR_API_URL:-https://api.linear.app/graphql}"
 LINEAR_PROJECT="${LINEAR_PROJECT:-noxyn-solari}"
 LINEAR_TEAM_KEY="${LINEAR_TEAM_KEY:-DHA}"
 CODEX_EXTRA_ARGS="${CODEX_EXTRA_ARGS:-}"
+CODEX_MODEL="${CODEX_MODEL:-gpt-5.6-terra}"
+CODEX_MODEL_REASONING="${CODEX_MODEL_REASONING:-medium}"
 
 die() {
   echo "error: $*" >&2
@@ -46,24 +51,55 @@ need git
 
 require_linear_key() {
   [[ -n "${LINEAR_API_KEY:-}" ]] || die \
-    "LINEAR_API_KEY is not set. Create a Linear personal API key and export it first."
+    "LINEAR_API_KEY is not set. Export a Linear personal API key first."
 }
 
 linear_graphql() {
   require_linear_key
-  local query="$1"
-  local variables="${2:-{}}"
 
-  curl -fsS "$LINEAR_API_URL" \
-    -H "Authorization: ${LINEAR_API_KEY}" \
-    -H "Content-Type: application/json" \
-    --data "$(jq -cn --arg q "$query" --argjson v "$variables" \
-      '{query:$q, variables:$v}')" |
-    jq -e 'if .errors then error(.errors|tostring) else .data end'
+  local query="$1"
+  local variables="${2-}"
+
+  if [[ -z "$variables" ]]; then
+    variables='{}'
+  fi
+
+  # Validate variables explicitly before building the request. This avoids the
+  # brittle `jq --argjson` failure mode and gives a useful error if a caller
+  # ever passes malformed JSON.
+  if ! jq -e . >/dev/null 2>&1 <<<"$variables"; then
+    echo "error: malformed Linear GraphQL variables JSON:" >&2
+    printf '%s\n' "$variables" >&2
+    return 1
+  fi
+
+  local payload
+  payload="$(
+    jq -cn \
+      --arg q "$query" \
+      --arg variables "$variables" \
+      '{query:$q, variables:($variables | fromjson)}'
+  )"
+
+  local response
+  response="$(
+    curl -fsS "$LINEAR_API_URL" \
+      -H "Authorization: ${LINEAR_API_KEY}" \
+      -H "Content-Type: application/json" \
+      --data-binary "$payload"
+  )"
+
+  jq -e '
+    if .errors
+    then error(.errors | tostring)
+    else .data
+    end
+  ' <<<"$response"
 }
 
 repo_root() {
-  git rev-parse --show-toplevel 2>/dev/null || die "run this from inside the repository"
+  git rev-parse --show-toplevel 2>/dev/null ||
+    die "run this from inside the repository"
 }
 
 slugify() {
@@ -74,7 +110,6 @@ slugify() {
 fetch_issue() {
   local id="$1"
 
-  # Linear's issue(id:) accepts a UUID or issue identifier such as DHA-14.
   linear_graphql \
     'query($id:String!){
       issue(id:$id){
@@ -152,15 +187,6 @@ list_candidate_issues() {
     "$(jq -cn --arg projectId "$project_id" '{projectId:$projectId}')"
 }
 
-is_unblocked_jq='
-  def blockers:
-    [(.relations.nodes // [])[]
-      | select(.type == "blocked_by")
-      | .relatedIssue
-      | select((.state.type // "") != "completed" and (.state.type // "") != "canceled")];
-  (blockers | length) == 0
-'
-
 cmd_next() {
   local project_id
   project_id="$(find_project_id "$LINEAR_PROJECT")"
@@ -171,17 +197,30 @@ cmd_next() {
 
   local candidates
   candidates="$(
-    jq -c --argjson dummy '{}' \
-      ".issues.nodes
-       | map(select($is_unblocked_jq))
-       | sort_by(
-           if .priority == 1 then 0
-           elif .priority == 2 then 1
-           elif .priority == 3 then 2
-           elif .priority == 4 then 3
-           else 4 end,
-           .createdAt
-         )" <<<"$data"
+    jq '
+      def blockers:
+        [
+          (.relations.nodes // [])[]
+          | select(.type == "blocked_by")
+          | .relatedIssue
+          | select(
+              (.state.type // "") != "completed"
+              and (.state.type // "") != "canceled"
+            )
+        ];
+
+      .issues.nodes
+      | map(select((blockers | length) == 0))
+      | sort_by(
+          if .priority == 1 then 0
+          elif .priority == 2 then 1
+          elif .priority == 3 then 2
+          elif .priority == 4 then 3
+          else 4
+          end,
+          .createdAt
+        )
+    ' <<<"$data"
   )"
 
   local count
@@ -193,7 +232,8 @@ cmd_next() {
   fi
 
   echo "Next unblocked issues in $LINEAR_PROJECT:"
-  jq -r '.[] |
+  jq -r '
+    .[] |
     "- \(.identifier) — \(.title) [\(.state.name)]" +
     (if .projectMilestone then " — \(.projectMilestone.name)" else "" end)
   ' <<<"$candidates"
@@ -205,7 +245,11 @@ cmd_next() {
 
 build_prompt() {
   local issue_json="$1"
-  local identifier title description
+
+  local identifier
+  local title
+  local description
+
   identifier="$(jq -r '.issue.identifier' <<<"$issue_json")"
   title="$(jq -r '.issue.title' <<<"$issue_json")"
   description="$(jq -r '.issue.description // ""' <<<"$issue_json")"
@@ -215,7 +259,7 @@ Implement Linear issue ${identifier} only:
 
 ${identifier} — ${title}
 
-The Linear issue body is the implementation contract:
+The Linear issue body is the implementation contract.
 
 --- LINEAR ISSUE START ---
 
@@ -223,29 +267,36 @@ ${description}
 
 --- LINEAR ISSUE END ---
 
-Workflow rules:
+## Workflow rules
 
 1. Read \`AGENTS.md\` first.
-2. Keep investigation narrow. Use \`rg\` / \`rg --files\` to locate the existing implementation.
-3. Prefer extending existing contracts and patterns over introducing new abstractions.
-4. Do not broadly inspect historical phase reports, unrelated docs, or unrelated code.
-5. Do not load skills/documentation unless they are actually relevant to files you need to change.
-6. Do not perform unrelated refactors, cleanup, formatting, or design work.
-7. Do not modify work that belongs to another Linear issue.
-8. If the implementation requires a substantive change outside this issue's stated scope, STOP and explain before making it.
-9. Preserve unrelated existing user changes.
-10. Run the narrowest relevant tests/checks first.
-11. Do not push.
-12. Do not continue to another issue.
+2. Keep investigation narrow.
+3. Use \`rg\` / \`rg --files\` to locate the existing implementation.
+4. Prefer extending existing contracts and patterns over introducing new abstractions.
+5. Do not broadly inspect historical phase reports, unrelated docs, or unrelated code.
+6. Do not load skills/documentation unless they are actually relevant to files you need to change.
+7. Do not perform unrelated refactors, cleanup, formatting, or design work.
+8. Do not modify work that belongs to another Linear issue.
+9. If the implementation requires a substantive change outside this issue's stated scope, STOP and explain before making it.
+10. Preserve unrelated existing user changes.
+11. Run the narrowest relevant tests/checks first.
+12. Do not push.
+13. Do not continue to another issue.
 
-Before editing, briefly report:
+## Before editing
+
+Briefly report:
+
 - the existing implementation path you found
 - the exact files/areas you expect to modify
 - why each is necessary
 
 Keep that report short, then implement the issue.
 
+## Completion report
+
 At completion report:
+
 - files changed
 - behavior implemented
 - API/schema/generated-client changes, if any
@@ -258,11 +309,55 @@ STOP after ${identifier}.
 EOF
 }
 
-cmd_start() {
-  local issue="${1:-}"
-  [[ -n "$issue" ]] || die "usage: $0 start DHA-14"
+find_issue_worktree() {
+  local identifier="$1"
+
+  local root
+  local parent
+  local guessed
+
+  root="$(repo_root)"
+  parent="$(dirname "$root")"
+  guessed="${parent}/$(basename "$root")-${identifier}"
+
+  if [[ -d "$guessed" ]]; then
+    printf '%s\n' "$guessed"
+    return
+  fi
+
+  git worktree list --porcelain |
+    awk -v id="$identifier" '
+      /^worktree / {
+        path = substr($0, 10)
+      }
+      /^branch / && tolower($0) ~ tolower(id) {
+        print path
+        exit
+      }
+    '
+}
+
+launch_codex() {
+  local prompt_file="$1"
 
   need codex
+
+  local prompt
+  prompt="$(cat "$prompt_file")"
+
+  if [[ -n "${CODEX_MODEL:-}" ]]; then
+    # Intentionally allow word splitting for CODEX_EXTRA_ARGS.
+    # shellcheck disable=SC2086
+    codex exec --model "$CODEX_MODEL" -c "model_reasoning_effort=$CODEX_MODEL_REASONING" $CODEX_EXTRA_ARGS "$prompt"
+  else
+    # shellcheck disable=SC2086
+    codex exec $CODEX_EXTRA_ARGS "$prompt"
+  fi
+}
+
+cmd_start() {
+  local issue="${1:-}"
+  [[ -n "$issue" ]] || die "usage: $0 start DHA-15"
 
   local root
   root="$(repo_root)"
@@ -271,15 +366,33 @@ cmd_start() {
   local issue_json
   issue_json="$(fetch_issue "$issue")"
 
-  local identifier title
-  identifier="$(jq -r '.issue.identifier' <<<"$issue_json")"
-  title="$(jq -r '.issue.title' <<<"$issue_json")"
+  local identifier
+  local title
+  local state_type
 
-  [[ "$identifier" != "null" && -n "$identifier" ]] || die "issue not found: $issue"
+  identifier="$(jq -r '.issue.identifier // empty' <<<"$issue_json")"
+  title="$(jq -r '.issue.title // empty' <<<"$issue_json")"
+  state_type="$(jq -r '.issue.state.type // empty' <<<"$issue_json")"
 
-  local slug branch parent worktree prompt_file
+  [[ -n "$identifier" ]] || die "issue not found: $issue"
+
+  if [[ "$state_type" == "completed" ]]; then
+    die "$identifier is already Done in Linear"
+  fi
+
+  if [[ "$state_type" == "canceled" ]]; then
+    die "$identifier is canceled in Linear"
+  fi
+
+  local slug
+  local branch
+  local parent
+  local worktree
+  local prompt_file
+
   slug="$(printf '%s' "$title" | slugify | cut -c1-48)"
   branch="$(printf '%s-%s' "$identifier" "$slug" | tr '[:upper:]' '[:lower:]')"
+
   parent="$(dirname "$root")"
   worktree="${parent}/$(basename "$root")-${identifier}"
   prompt_file="/tmp/${identifier}-codex-prompt.md"
@@ -288,7 +401,7 @@ cmd_start() {
   echo "Branch:   $branch"
   echo "Worktree: $worktree"
 
-  if [[ -e "$worktree" ]]; then
+  if [[ -d "$worktree" ]]; then
     echo "Using existing worktree: $worktree"
   else
     git worktree add "$worktree" -b "$branch"
@@ -298,39 +411,11 @@ cmd_start() {
 
   echo
   echo "Prompt saved to: $prompt_file"
-  echo "Launching a fresh Codex session..."
+  echo "Launching a fresh Codex exec run..."
   echo
 
   cd "$worktree"
-
-  # Prefer stdin so the full issue body is not mangled by shell quoting.
-  # CODEX_MODEL is optional because Codex model names/options may change.
-  if [[ -n "${CODEX_MODEL:-}" ]]; then
-    # shellcheck disable=SC2086
-    codex --model "$CODEX_MODEL" $CODEX_EXTRA_ARGS < "$prompt_file"
-  else
-    # shellcheck disable=SC2086
-    codex $CODEX_EXTRA_ARGS < "$prompt_file"
-  fi
-}
-
-find_issue_worktree() {
-  local identifier="$1"
-  local root parent guessed
-  root="$(repo_root)"
-  parent="$(dirname "$root")"
-  guessed="${parent}/$(basename "$root")-${identifier}"
-
-  if [[ -d "$guessed/.git" || -f "$guessed/.git" ]]; then
-    printf '%s\n' "$guessed"
-    return
-  fi
-
-  git worktree list --porcelain |
-    awk -v id="$identifier" '
-      /^worktree / { path=substr($0,10) }
-      /^branch / && tolower($0) ~ tolower(id) { print path; exit }
-    '
+  launch_codex "$prompt_file"
 }
 
 linear_done_state_id() {
@@ -342,12 +427,18 @@ linear_done_state_id() {
         nodes {
           id
           key
-          states { nodes { id name type } }
+          states {
+            nodes { id name type }
+          }
         }
       }
     }' \
     "$(jq -cn --arg key "$team_key" '{key:$key}')" |
-    jq -r '.teams.nodes[0].states.nodes[] | select(.type=="completed") | .id' |
+    jq -r '
+      .teams.nodes[0].states.nodes[]
+      | select(.type == "completed")
+      | .id
+    ' |
     head -n1
 }
 
@@ -359,10 +450,15 @@ mark_issue_done() {
     'mutation($id:String!,$stateId:String!){
       issueUpdate(id:$id,input:{stateId:$stateId}){
         success
-        issue { identifier state { name type } }
+        issue {
+          identifier
+          state { name type }
+        }
       }
     }' \
-    "$(jq -cn --arg id "$issue_uuid" --arg stateId "$state_id" \
+    "$(jq -cn \
+      --arg id "$issue_uuid" \
+      --arg stateId "$state_id" \
       '{id:$id,stateId:$stateId}')"
 }
 
@@ -376,39 +472,54 @@ add_linear_comment() {
         success
       }
     }' \
-    "$(jq -cn --arg issueId "$issue_uuid" --arg body "$body" \
+    "$(jq -cn \
+      --arg issueId "$issue_uuid" \
+      --arg body "$body" \
       '{issueId:$issueId,body:$body}')"
 }
 
 cmd_finish() {
   local issue="${1:-}"
-  [[ -n "$issue" ]] || die "usage: $0 finish DHA-14"
+  [[ -n "$issue" ]] || die "usage: $0 finish DHA-15"
 
-  local issue_json identifier title issue_uuid
+  local issue_json
   issue_json="$(fetch_issue "$issue")"
-  identifier="$(jq -r '.issue.identifier' <<<"$issue_json")"
-  title="$(jq -r '.issue.title' <<<"$issue_json")"
-  issue_uuid="$(jq -r '.issue.id' <<<"$issue_json")"
 
-  [[ "$identifier" != "null" && -n "$identifier" ]] || die "issue not found: $issue"
+  local identifier
+  local title
+  local issue_uuid
+
+  identifier="$(jq -r '.issue.identifier // empty' <<<"$issue_json")"
+  title="$(jq -r '.issue.title // empty' <<<"$issue_json")"
+  issue_uuid="$(jq -r '.issue.id // empty' <<<"$issue_json")"
+
+  [[ -n "$identifier" ]] || die "issue not found: $issue"
 
   local worktree
   worktree="$(find_issue_worktree "$identifier")"
-  [[ -n "$worktree" && -d "$worktree" ]] || die "could not find worktree for $identifier"
+  [[ -n "$worktree" && -d "$worktree" ]] ||
+    die "could not find worktree for $identifier"
 
   cd "$worktree"
 
   echo "=== $identifier — $title ==="
   echo
+
   echo "=== git status ==="
   git status --short
   echo
+
   echo "=== diff stat ==="
   git diff --stat
   echo
+
   echo "=== changed files ==="
   git diff --name-only
   echo
+
+  if [[ -z "$(git status --porcelain)" ]]; then
+    die "working tree is clean; there is nothing to finish"
+  fi
 
   if [[ -n "${CHECK_CMD:-}" ]]; then
     echo "=== running CHECK_CMD ==="
@@ -426,13 +537,13 @@ cmd_finish() {
     exit 0
   }
 
-  # Stage only after human review.
   git add -A
 
   echo
   echo "=== staged diff stat ==="
   git diff --cached --stat
   echo
+
   echo "=== staged files ==="
   git diff --cached --name-only
   echo
@@ -446,9 +557,13 @@ cmd_finish() {
 
   local commit_message
   commit_message="feat: ${title}"
+
   git commit -m "$commit_message"
 
-  local commit_hash summary comment
+  local commit_hash
+  local summary
+  local comment
+
   commit_hash="$(git rev-parse --short HEAD)"
   summary="$(git show --stat --oneline --format='%h %s' HEAD)"
 
@@ -472,10 +587,13 @@ EOF
   echo "Added completion comment to Linear."
 
   read -r -p "Mark $identifier Done in Linear? [y/N] " answer
+
   if [[ "$answer" =~ ^[Yy]$ ]]; then
     local done_state
     done_state="$(linear_done_state_id "$LINEAR_TEAM_KEY")"
-    [[ -n "$done_state" ]] || die "could not find completed state for team $LINEAR_TEAM_KEY"
+    [[ -n "$done_state" ]] ||
+      die "could not find completed state for team $LINEAR_TEAM_KEY"
+
     mark_issue_done "$issue_uuid" "$done_state" >/dev/null
     echo "$identifier marked Done."
   else
@@ -494,8 +612,8 @@ usage() {
   cat <<EOF
 Usage:
   $0 next
-  $0 start DHA-14
-  $0 finish DHA-14
+  $0 start DHA-15
+  $0 finish DHA-15
 
 Environment:
   LINEAR_API_KEY       required
@@ -510,10 +628,13 @@ Examples:
 
   $0 next
 
-  CODEX_EXTRA_ARGS='' $0 start DHA-14
+  $0 start DHA-15
+
+  CODEX_MODEL='your-model-name' \
+    $0 start DHA-15
 
   CHECK_CMD='pnpm test -- capability-matrix' \
-    $0 finish DHA-14
+    $0 finish DHA-15
 EOF
 }
 
@@ -521,15 +642,19 @@ case "${1:-}" in
   next)
     cmd_next
     ;;
+
   start)
     cmd_start "${2:-}"
     ;;
+
   finish)
     cmd_finish "${2:-}"
     ;;
+
   -h|--help|help|"")
     usage
     ;;
+
   *)
     die "unknown command: $1 (try --help)"
     ;;
