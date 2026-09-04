@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
 import type { Run } from "@/components/run-status";
+import { browserApi } from "@/lib/browser-api";
 
 type Scenario = "controlled_api_evolution" | "current_configured_solari";
 
@@ -26,7 +27,7 @@ export function StartRunButton({
     setPending(true);
     setError(null);
     try {
-      const response = await fetch("/api/runs", {
+      const response = await browserApi("/api/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

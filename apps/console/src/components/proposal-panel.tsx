@@ -4,6 +4,8 @@ import type { components } from "@noxyn/generated-client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { browserApi, SessionExpiredError } from "@/lib/browser-api";
+
 type Proposal = components["schemas"]["ProposalView"];
 
 export function ProposalPanel({
@@ -29,15 +31,27 @@ export function ProposalPanel({
       return;
     const controller = new AbortController();
     const timer = window.setInterval(async () => {
-      const response = await fetch(`/api/proposals/${proposal.id}`, {
-        signal: controller.signal,
-      });
-      const body = (await response.json()) as Proposal & { error?: string };
-      if (response.ok) {
-        setProposal(body);
-        setError(null);
-      } else if (!controller.signal.aborted) {
-        setError(body.error ?? "Could not refresh proposal verification.");
+      try {
+        const response = await browserApi(`/api/proposals/${proposal.id}`, {
+          signal: controller.signal,
+        });
+        const body = (await response.json()) as Proposal & { error?: string };
+        if (response.ok) {
+          setProposal(body);
+          setError(null);
+        } else if (!controller.signal.aborted) {
+          setError(body.error ?? "Could not refresh proposal verification.");
+        }
+      } catch (reason) {
+        if (
+          !controller.signal.aborted &&
+          !(reason instanceof SessionExpiredError)
+        )
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "Could not refresh proposal verification.",
+          );
       }
     }, 1500);
     return () => {
@@ -53,11 +67,21 @@ export function ProposalPanel({
       action === "generate"
         ? `/api/findings/${findingId}/proposals`
         : `/api/proposals/${proposal?.id}/verify`;
-    const response = await fetch(target, { method: "POST" });
-    const body = (await response.json()) as Proposal & { error?: string };
-    if (response.ok) setProposal(body);
-    else setError(body.error ?? "The proposal request failed safely.");
-    setBusy(null);
+    try {
+      const response = await browserApi(target, { method: "POST" });
+      const body = (await response.json()) as Proposal & { error?: string };
+      if (response.ok) setProposal(body);
+      else setError(body.error ?? "The proposal request failed safely.");
+    } catch (reason) {
+      if (!(reason instanceof SessionExpiredError))
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : "The proposal request failed safely.",
+        );
+    } finally {
+      setBusy(null);
+    }
   }
 
   if (!proposal)

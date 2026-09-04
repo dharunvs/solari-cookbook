@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 import { CapabilityMatrix } from "@/components/capability-matrix";
 import { RunStatus, terminalStates, type Run } from "@/components/run-status";
+import { browserApi, SessionExpiredError } from "@/lib/browser-api";
 
 type Matrix = components["schemas"]["MatrixView"];
 type Finding = components["schemas"]["FindingView"];
@@ -58,7 +59,7 @@ export function RunDetail({
     const controller = new AbortController();
     const timer = window.setInterval(async () => {
       try {
-        const response = await fetch(`/api/runs/${run.id}`, {
+        const response = await browserApi(`/api/runs/${run.id}`, {
           signal: controller.signal,
         });
         const data = (await response.json()) as Run & { error?: string };
@@ -86,7 +87,7 @@ export function RunDetail({
     const controller = new AbortController();
     async function loadAnalysis() {
       try {
-        const response = await fetch(`/api/runs/${run.id}/analysis`, {
+        const response = await browserApi(`/api/runs/${run.id}/analysis`, {
           signal: controller.signal,
         });
         const result = (await response.json()) as Analysis & { error?: string };
@@ -115,17 +116,25 @@ export function RunDetail({
     )
       return;
     setCancelling(true);
-    const response = await fetch(`/api/runs/${run.id}/cancel`, {
-      method: "POST",
-    });
-    const data = (await response.json()) as Run & { error?: string };
-    if (response.ok) {
-      setRun(data);
-      setError(null);
-    } else {
-      setError(data.error ?? "Could not cancel the run.");
+    try {
+      const response = await browserApi(`/api/runs/${run.id}/cancel`, {
+        method: "POST",
+      });
+      const data = (await response.json()) as Run & { error?: string };
+      if (response.ok) {
+        setRun(data);
+        setError(null);
+      } else {
+        setError(data.error ?? "Could not cancel the run.");
+      }
+    } catch (reason) {
+      if (!(reason instanceof SessionExpiredError))
+        setError(
+          reason instanceof Error ? reason.message : "Could not cancel the run.",
+        );
+    } finally {
+      setCancelling(false);
     }
-    setCancelling(false);
   }
 
   const snapshotComplete = !["QUEUED", "SNAPSHOTTING"].includes(run.state);

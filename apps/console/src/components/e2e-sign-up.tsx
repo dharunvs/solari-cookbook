@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function E2ESignUp() {
+export function E2ESignUp({ returnTo = "/" }: { returnTo?: string }) {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   async function register(formData: FormData) {
@@ -17,7 +17,7 @@ export function E2ESignUp() {
       setError("Unable to create the test session.");
       return;
     }
-    router.push("/");
+    router.push(returnTo);
     router.refresh();
   }
   return (

@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { SessionExpiryBoundary } from "@/components/session-expiry-boundary";
 import { apiFor } from "@/lib/api";
 import { getApiIdentity } from "@/lib/identity";
 
@@ -30,12 +31,14 @@ export default async function ProjectLayout({
     redirect("/onboarding");
 
   return (
-    <AppShell
-      productId={me.onboarding.product_id}
-      projectId={projectId}
-      projectName={project.name}
-    >
-      {children}
-    </AppShell>
+    <SessionExpiryBoundary>
+      <AppShell
+        productId={me.onboarding.product_id}
+        projectId={projectId}
+        projectName={project.name}
+      >
+        {children}
+      </AppShell>
+    </SessionExpiryBoundary>
   );
 }

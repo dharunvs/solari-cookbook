@@ -2,10 +2,15 @@ import { SignIn } from "@clerk/nextjs";
 import Link from "next/link";
 
 import { E2ESignUp } from "@/components/e2e-sign-up";
-import { isE2eAuthBypass } from "@/lib/identity";
+import { isE2eAuthBypass, safeReturnPath } from "@/lib/identity";
 
-export default function SignInPage() {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ returnTo?: string }>;
+}) {
   const e2e = isE2eAuthBypass();
+  const returnTo = safeReturnPath((await searchParams).returnTo) ?? "/";
   return (
     <main
       className="grid min-h-screen place-items-center bg-canvas-soft px-4"
@@ -17,12 +22,12 @@ export default function SignInPage() {
           Sign in to your workspace
         </h1>
         {e2e ? (
-          <E2ESignUp />
+          <E2ESignUp returnTo={returnTo} />
         ) : (
           <>
             <div className="mt-7">
               <SignIn
-                forceRedirectUrl="/"
+                forceRedirectUrl={returnTo}
                 routing="path"
                 path="/sign-in"
                 signUpUrl="/sign-up"

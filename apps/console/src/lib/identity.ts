@@ -28,3 +28,21 @@ export async function getApiIdentity(): Promise<ApiIdentity> {
 }
 
 export const e2eCookieName = E2E_COOKIE;
+
+export function safeReturnPath(value: string | null | undefined) {
+  if (
+    !value ||
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    /[\\\u0000-\u001f]/.test(value)
+  )
+    return null;
+  try {
+    const url = new URL(value, "http://noxyn.local");
+    return url.origin === "http://noxyn.local"
+      ? `${url.pathname}${url.search}${url.hash}`
+      : null;
+  } catch {
+    return null;
+  }
+}
